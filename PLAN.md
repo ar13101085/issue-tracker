@@ -151,8 +151,9 @@ Phase 0 থেকে 8 সবগুলো তৈরি হয়েছে।
 - Project page-এ GitHub-এর filter bar আর একাধিক saved view নেই; Table আর Board দুটো স্থির tab।
 - Static release binary (`dist/issue-tracker` 23 MB, `dist/it` 6 MB) একা চালিয়ে যাচাই হয়েছে।
 - Email পাঠানো আসল SMTP server দিয়ে পরীক্ষা হয়নি; test-এ শুধু queue পর্যন্ত যাচাই হয়েছে।
-- Relationships: parent/sub-issue আর "blocked by / blocking" আছে (sidebar, timeline, `it issue block/unblock`); সম্পর্ক শুধু একই
-  repository-র ভেতরে, আর search-এ `is:blocked` / `is:blocking` qualifier নেই।
+- Relationships: GitHub-এর মতো gear → menu → issue picker। Parent/sub-issue, "blocked by", "blocking" আর "relates to" আছে
+  (sidebar, timeline, `it issue block/unblock/relate/unrelate`)। সম্পর্ক শুধু একই repository-র ভেতরে। GitHub-এর keyboard
+  shortcut (B B, B X, B R), "Add security alert" আর search-এর `is:blocked` / `is:blocking` qualifier নেই।
 - Avatar upload নেই, login থেকে তৈরি identicon দেখায়।
 - Organization নেই, repo-র মালিক শুধু user।
 - Task list-এর checkbox page থেকে টিক দেওয়া যায় না, comment edit করে বদলাতে হয়।

@@ -41,6 +41,7 @@ export type Issue = {
   sub_issues: IssueRef[];
   blocked_by: IssueRef[];
   blocking: IssueRef[];
+  related: IssueRef[];
   reactions: ReactionGroup[];
   viewer_can_edit: boolean;
   viewer_can_close: boolean;
@@ -137,6 +138,8 @@ export type EventKind =
   | "blocked_by_removed"
   | "blocking_added"
   | "blocking_removed"
+  | "related_added"
+  | "related_removed"
   | "type_changed";
 export type LabelRef = { name: string; color: string };
 export type IssueRef = { number: number; title: string; state: IssueState; state_reason: StateReason | null };

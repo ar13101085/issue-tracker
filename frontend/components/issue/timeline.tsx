@@ -16,6 +16,7 @@ import {
   TrashIcon,
   IssueTrackedByIcon,
   BlockedIcon,
+  LinkIcon,
   IssueTracksIcon,
   ArrowRightIcon,
   TriangleDownIcon,
@@ -323,6 +324,10 @@ function describe(e: TimelineEvent, labelHref: (name: string) => string): { icon
       return { icon: <BlockedIcon size={16} />, text: <>marked this as blocking</> };
     case "blocking_removed":
       return { icon: <BlockedIcon size={16} />, text: <>removed a blocking relationship</> };
+    case "related_added":
+      return { icon: <LinkIcon size={16} />, text: <>marked this as related to</> };
+    case "related_removed":
+      return { icon: <LinkIcon size={16} />, text: <>removed a relates to relationship</> };
     case "type_changed":
       return {
         icon: <IssueDraftIcon size={16} />,

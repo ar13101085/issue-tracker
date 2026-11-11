@@ -226,6 +226,20 @@ pub enum IssueCmd {
         #[arg(long)]
         by: i64,
     },
+    /// Link two issues as related
+    Relate {
+        number: i64,
+        /// The other issue
+        #[arg(long)]
+        to: i64,
+    },
+    /// Remove a "relates to" link
+    Unrelate {
+        number: i64,
+        /// The other issue
+        #[arg(long)]
+        to: i64,
+    },
     /// Remove a "blocked by" relationship
     Unblock {
         number: i64,

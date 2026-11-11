@@ -1,41 +1,28 @@
 "use client";
 
-import { IssueTracksIcon, XIcon } from "@primer/octicons-react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { ArrowLeftIcon, CheckIcon, IssueTracksIcon, SearchIcon, XIcon } from "@primer/octicons-react";
+import { Popover } from "@base-ui/react/popover";
+import { useState } from "react";
 import useSWR from "swr";
 import { IssueStateIcon } from "@/components/ui/misc";
 import { SelectPanel } from "@/components/ui/select-panel";
 import { api, type Issue, type IssueList } from "@/lib/api";
 import { Link } from "@/lib/router";
 import { buttonClass } from "@/components/ui/button";
-import { SidebarSection } from "@/components/issue/sidebar";
+import { Gear, SidebarSection } from "@/components/issue/sidebar";
+import { cn } from "@/lib/utils";
 
 const candidatesKey = (repo: string) => `/repos/${repo}/issues?q=${encodeURIComponent("is:issue state:open")}&per_page=100`;
 
 type IssueLike = { number: number; title: string; state: Issue["state"]; state_reason: Issue["state_reason"] };
+export type RelationKind = "parent" | "blocked_by" | "blocking" | "related";
 
-function panelItems(issues: IssueLike[]) {
-  return issues.map((i) => ({
-    key: String(i.number),
-    text: `${i.title} #${i.number}`,
-    node: (
-      <>
-        <IssueStateIcon issue={i} />
-        <span className="min-w-0 flex-1 truncate">{i.title}</span>
-        <span className="text-fg-muted">#{i.number}</span>
-      </>
-    ),
-  }));
-}
-
-// The select panel hands its click handler and ref to the trigger, so they must reach the button.
-function RelationButton({ children, ...rest }: { children: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button type="button" {...rest} className="cursor-pointer text-xs text-fg-muted hover:text-fg-accent hover:underline">
-      {children}
-    </button>
-  );
-}
+const RELATIONS: { kind: RelationKind; add: string; change: string; label: string; hint: string }[] = [
+  { kind: "parent", add: "Add parent", change: "Change or remove parent", label: "Parent issue", hint: "Select the parent of the current issue" },
+  { kind: "blocked_by", add: "Mark as blocked by", change: "Add or change blocked by", label: "Blocked by", hint: "Mark issues that block the current issue" },
+  { kind: "blocking", add: "Mark as blocking", change: "Add or change blocking", label: "Blocking", hint: "Mark issues that the current issue blocks" },
+  { kind: "related", add: "Add relates to", change: "Add or change relates to", label: "Relates to", hint: "Mark issues that relate to the current issue" },
+];
 
 function RelationList({ repo, label, issues }: { repo: string; label: string; issues: IssueLike[] }) {
   if (issues.length === 0) return null;
@@ -61,74 +48,153 @@ function RelationList({ repo, label, issues }: { repo: string; label: string; is
 }
 
 /**
- * Sidebar section with the parent issue and what blocks, or is blocked by, this issue.
- * Triage and up can change each of them.
+ * Sidebar section with the parent issue and the issues this one is blocked by, blocks or relates to.
+ * The gear opens a menu of relationship kinds; choosing one swaps the menu for an issue picker.
+ * Triage and up can change them. `onChange` gets the issues to link and to unlink.
  */
-export function RelationshipsSection({
-  repo,
-  issue,
-  onSetParent,
-  onBlockedBy,
-  onBlocking,
-}: {
-  repo: string;
-  issue: Issue;
-  onSetParent: (number: number | null) => void;
-  /** `on` says whether the link is being added or removed. */
-  onBlockedBy: (number: number, on: boolean) => void;
-  onBlocking: (number: number, on: boolean) => void;
-}) {
+export function RelationshipsSection({ repo, issue, onChange }: { repo: string; issue: Issue; onChange: (kind: RelationKind, add: number[], remove: number[]) => void }) {
   const canEdit = issue.viewer_can_triage;
-  const candidates = useSWR<IssueList>(canEdit ? candidatesKey(repo) : null, api);
-  const open: IssueLike[] = (candidates.data?.items ?? []).filter((i) => i.number !== issue.number);
-  // Linked issues that are closed are not in the open list, but must stay selectable so they can be removed.
-  const withLinked = (linked: IssueLike[], hidden: number[]) => {
-    const skip = new Set(hidden);
-    const rest = open.filter((i) => !skip.has(i.number) && !linked.some((l) => l.number === i.number));
-    return panelItems([...linked, ...rest]);
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<RelationKind | null>(null);
+  const [draft, setDraft] = useState<number[]>([]);
+  const [filter, setFilter] = useState("");
+  const candidates = useSWR<IssueList>(canEdit && open ? candidatesKey(repo) : null, api);
+
+  const linked: Record<RelationKind, IssueLike[]> = {
+    parent: issue.parent ? [issue.parent] : [],
+    blocked_by: issue.blocked_by,
+    blocking: issue.blocking,
+    related: issue.related,
   };
-  const subs = issue.sub_issues.map((s) => s.number);
-  const blockedBy = issue.blocked_by.map((i) => i.number);
-  const blocking = issue.blocking.map((i) => i.number);
-  const empty = !issue.parent && blockedBy.length === 0 && blocking.length === 0;
-  const common = { placeholder: "Search issues", loading: !candidates.data, empty: "No open issues to choose", align: "end" as const };
+  // Links that cannot be combined: a sub-issue as parent, or blocking in both directions.
+  const hidden: Record<RelationKind, IssueLike[]> = { parent: issue.sub_issues, blocked_by: issue.blocking, blocking: issue.blocked_by, related: [] };
+  const empty = RELATIONS.every((r) => linked[r.kind].length === 0);
+
+  function choose(next: RelationKind) {
+    setKind(next);
+    setDraft(linked[next].map((i) => i.number));
+    setFilter("");
+  }
+
+  function apply() {
+    if (!kind) return;
+    const before = linked[kind].map((i) => i.number);
+    const add = draft.filter((n) => !before.includes(n));
+    const remove = before.filter((n) => !draft.includes(n));
+    if (add.length || remove.length) onChange(kind, add, remove);
+  }
+
+  function close(next: boolean) {
+    if (!next) {
+      apply();
+      setKind(null);
+    }
+    setOpen(next);
+  }
+
+  function pick(number: number) {
+    if (kind === "parent") {
+      // One parent: choosing applies at once, choosing it again removes it.
+      const before = issue.parent?.number;
+      onChange("parent", before === number ? [] : [number], before === undefined ? [] : [before]);
+      setKind(null);
+      setOpen(false);
+    } else {
+      setDraft((d) => (d.includes(number) ? d.filter((n) => n !== number) : [...d, number]));
+    }
+  }
+
+  const relation = RELATIONS.find((r) => r.kind === kind);
+  const skip = new Set([issue.number, ...(kind ? hidden[kind].map((i) => i.number) : [])]);
+  const current = kind ? linked[kind] : [];
+  // Linked issues that are closed are not in the open list, but must stay listed so they can be removed.
+  const pool: IssueLike[] = [...current, ...(candidates.data?.items ?? []).filter((i) => !current.some((c) => c.number === i.number))].filter((i) => !skip.has(i.number));
+  const needle = filter.trim().toLowerCase();
+  const shown = needle ? pool.filter((i) => `${i.title} #${i.number}`.toLowerCase().includes(needle)) : pool;
+  const menuItem = "flex min-h-[33px] w-full cursor-pointer items-center rounded-md px-2 py-1.5 text-left text-sm hover:bg-control-transparent-hover";
 
   return (
-    <SidebarSection title="Relationships">
-      <div className="flex flex-col gap-3">
-        {issue.parent && <RelationList repo={repo} label="Parent issue" issues={[issue.parent]} />}
-        <RelationList repo={repo} label="Blocked by" issues={issue.blocked_by} />
-        <RelationList repo={repo} label="Blocking" issues={issue.blocking} />
-        {empty && <p className="text-fg-muted">None yet</p>}
-        {canEdit && (
-          <div className="flex flex-col items-start gap-1">
-            <SelectPanel
-              {...common}
-              title={issue.parent ? "Change or remove parent issue" : "Add parent issue"}
-              trigger={<RelationButton>{issue.parent ? "Change or remove parent" : "Add parent"}</RelationButton>}
-              items={withLinked(issue.parent ? [issue.parent] : [], subs)}
-              selected={issue.parent ? [String(issue.parent.number)] : []}
-              onApply={([key]) => onSetParent(key ? Number(key) : null)}
-            />
-            <SelectPanel
-              {...common}
-              title="Issues that block this one"
-              trigger={<RelationButton>{blockedBy.length ? "Add or change blocked by" : "Mark as blocked by"}</RelationButton>}
-              items={withLinked(issue.blocked_by, blocking)}
-              selected={blockedBy.map(String)}
-              onToggle={(key) => onBlockedBy(Number(key), !blockedBy.includes(Number(key)))}
-            />
-            <SelectPanel
-              {...common}
-              title="Issues this one blocks"
-              trigger={<RelationButton>{blocking.length ? "Add or change blocking" : "Mark as blocking"}</RelationButton>}
-              items={withLinked(issue.blocking, blockedBy)}
-              selected={blocking.map(String)}
-              onToggle={(key) => onBlocking(Number(key), !blocking.includes(Number(key)))}
-            />
-          </div>
-        )}
-      </div>
+    <SidebarSection
+      title="Relationships"
+      action={
+        canEdit && (
+          <Popover.Root open={open} onOpenChange={close}>
+            <Popover.Trigger render={<Gear label="Edit Relationships" />} />
+            <Popover.Portal>
+              <Popover.Positioner align="end" sideOffset={4} className="z-50">
+                <Popover.Popup className="flex max-h-[min(480px,70vh)] w-[320px] max-w-[calc(100vw-16px)] flex-col rounded-xl bg-popover text-sm shadow-[var(--shadow-floating-small)] outline-none">
+                  {!relation ? (
+                    <ul role="menu" aria-label="Relationships" className="p-2">
+                      {RELATIONS.map((r) => (
+                        <li key={r.kind} role="none">
+                          <button type="button" role="menuitem" className={menuItem} onClick={() => choose(r.kind)}>
+                            {linked[r.kind].length ? r.change : r.add}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <>
+                      <header className="flex items-start gap-2 px-2 pt-2">
+                        <button type="button" aria-label="Back to relationships" onClick={() => { apply(); setKind(null); }} className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-muted hover:bg-control-transparent-hover">
+                          <ArrowLeftIcon size={16} />
+                        </button>
+                        <div className="min-w-0 py-1">
+                          <Popover.Title className="truncate text-sm leading-5 font-semibold">{repo}</Popover.Title>
+                          <p className="truncate text-xs text-fg-muted">{relation.hint}</p>
+                        </div>
+                      </header>
+                      <div className="p-2">
+                        <label className="flex h-8 items-center gap-2 rounded-md border border-[var(--control-borderColor-rest)] bg-canvas pl-2 focus-within:border-fg-accent">
+                          <SearchIcon size={16} className="shrink-0 text-fg-muted" />
+                          <input autoFocus value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search issues" aria-label="Search issues" className="h-full min-w-0 flex-1 bg-transparent pr-2 outline-none" />
+                        </label>
+                      </div>
+                      <ul role="listbox" aria-multiselectable={kind !== "parent"} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+                        {!candidates.data && <li className="px-2 py-4 text-center text-fg-muted">Loading…</li>}
+                        {candidates.data && shown.length === 0 && <li className="px-2 py-4 text-center text-fg-muted">No open issues to choose</li>}
+                        {shown.map((i) => {
+                          const on = kind === "parent" ? issue.parent?.number === i.number : draft.includes(i.number);
+                          return (
+                            <li key={i.number} role="option" aria-selected={on}>
+                              <button type="button" onClick={() => pick(i.number)} className="flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left leading-5 hover:bg-control-transparent-hover">
+                                <span
+                                  className={cn(
+                                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center",
+                                    kind !== "parent" && "rounded-[3px] border",
+                                    kind !== "parent" && (on ? "border-accent-emphasis bg-accent-emphasis text-fg-on-emphasis" : "border-[var(--control-borderColor-emphasis)]"),
+                                  )}
+                                >
+                                  {on && <CheckIcon size={kind === "parent" ? 16 : 12} />}
+                                </span>
+                                <span className="flex h-5 shrink-0 items-center">
+                                  <IssueStateIcon issue={i} />
+                                </span>
+                                <span className="min-w-0 flex-1 break-words">{i.title}</span>
+                                <span className="shrink-0 text-fg-muted">#{i.number}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
+                  )}
+                </Popover.Popup>
+              </Popover.Positioner>
+            </Popover.Portal>
+          </Popover.Root>
+        )
+      }
+    >
+      {empty ? (
+        <p className="text-fg-muted">None yet</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {RELATIONS.map((r) => (
+            <RelationList key={r.kind} repo={repo} label={r.label} issues={linked[r.kind]} />
+          ))}
+        </div>
+      )}
     </SidebarSection>
   );
 }

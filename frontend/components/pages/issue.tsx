@@ -465,21 +465,32 @@ export function IssuePage({ owner, repo, number }: { owner: string; repo: string
           <RelationshipsSection
             repo={full}
             issue={issue}
-            onSetParent={(parent) =>
+            onChange={(kind, add, remove) =>
               quiet(async () => {
-                // An issue has one parent, so the old link goes before the new one is made.
-                if (issue.parent) await api(`${repoPath}/issues/${issue.parent.number}/sub_issues/${issue.number}`, { method: "DELETE" });
-                if (parent !== null) await api(`${repoPath}/issues/${parent}/sub_issues`, { method: "POST", body: { number: issue.number } });
+                const issues = `${repoPath}/issues`;
+                const me = issue.number;
+                // Each kind is stored on one side: a parent keeps its sub-issues, a blocked issue keeps its blockers.
+                const unlink = (n: number) =>
+                  kind === "parent"
+                    ? api(`${issues}/${n}/sub_issues/${me}`, { method: "DELETE" })
+                    : kind === "blocked_by"
+                      ? api(`${issues}/${me}/dependencies/blocked_by/${n}`, { method: "DELETE" })
+                      : kind === "blocking"
+                        ? api(`${issues}/${n}/dependencies/blocked_by/${me}`, { method: "DELETE" })
+                        : api(`${issues}/${me}/relations/${n}`, { method: "DELETE" });
+                const link = (n: number) =>
+                  kind === "parent"
+                    ? api(`${issues}/${n}/sub_issues`, { method: "POST", body: { number: me } })
+                    : kind === "blocked_by"
+                      ? api(`${issues}/${me}/dependencies/blocked_by`, { method: "POST", body: { number: n } })
+                      : kind === "blocking"
+                        ? api(`${issues}/${n}/dependencies/blocked_by`, { method: "POST", body: { number: me } })
+                        : api(`${issues}/${me}/relations`, { method: "POST", body: { number: n } });
+                // Removals first: an issue has one parent, so the old one must go before the new one.
+                for (const n of remove) await unlink(n);
+                for (const n of add) await link(n);
               })
             }
-            onBlockedBy={(other, on) =>
-              quiet(() => (on ? api(`${key}/dependencies/blocked_by`, { method: "POST", body: { number: other } }) : api(`${key}/dependencies/blocked_by/${other}`, { method: "DELETE" })))
-            }
-            onBlocking={(other, on) => {
-              // "This blocks #other" is stored on the other issue as "blocked by this".
-              const theirs = `${repoPath}/issues/${other}/dependencies/blocked_by`;
-              return quiet(() => (on ? api(theirs, { method: "POST", body: { number: issue.number } }) : api(`${theirs}/${issue.number}`, { method: "DELETE" })));
-            }}
           />
           {user && (
             <SubscribeSection

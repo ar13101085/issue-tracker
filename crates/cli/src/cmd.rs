@@ -383,6 +383,7 @@ async fn issue(ctx: &Ctx, command: IssueCmd) -> Result<(), String> {
             line("Sub-issues", i.sub_issues.iter().map(|s| format!("#{}", s.number)).collect::<Vec<_>>().join(", "));
             line("Blocked by", i.blocked_by.iter().map(|s| format!("#{}", s.number)).collect::<Vec<_>>().join(", "));
             line("Blocking", i.blocking.iter().map(|s| format!("#{}", s.number)).collect::<Vec<_>>().join(", "));
+            line("Relates to", i.related.iter().map(|s| format!("#{}", s.number)).collect::<Vec<_>>().join(", "));
             if i.locked {
                 println!("{}", dim("This conversation is locked."));
             }
@@ -516,6 +517,16 @@ async fn issue(ctx: &Ctx, command: IssueCmd) -> Result<(), String> {
         IssueCmd::Block { number, by } => {
             client.run(Method::POST, &format!("{base}/{number}/dependencies/blocked_by"), Some(json!({"number": by}))).await?;
             println!("{} Issue #{number} is now blocked by #{by}", green("✓"));
+            Ok(())
+        }
+        IssueCmd::Relate { number, to } => {
+            client.run(Method::POST, &format!("{base}/{number}/relations"), Some(json!({"number": to}))).await?;
+            println!("{} Issue #{number} now relates to #{to}", green("✓"));
+            Ok(())
+        }
+        IssueCmd::Unrelate { number, to } => {
+            client.run(Method::DELETE, &format!("{base}/{number}/relations/{to}"), None).await?;
+            println!("{} Issue #{number} no longer relates to #{to}", green("✓"));
             Ok(())
         }
         IssueCmd::Unblock { number, by } => {

@@ -271,6 +271,24 @@ async fn lock_pin_sub_issues_bulk_and_reactions() {
     assert_eq!(unblocked.json["blocked_by"].as_array().unwrap().len(), 0);
     assert_eq!(send(&app, DELETE, &format!("{issues}/3/dependencies/blocked_by/4"), Some(&bob), None).await.status, StatusCode::NOT_FOUND);
     assert_eq!(send(&app, GET, &format!("{issues}/4"), None, None).await.json["blocking"].as_array().unwrap().len(), 0);
+
+    // Related: one link, visible from both issues.
+    let relate = |issue: i64, other: i64, who: &'static str| {
+        let path = format!("{issues}/{issue}/relations");
+        let app = &app;
+        async move { send(app, POST, &path, Some(who), Some(json!({"number": other}))).await }
+    };
+    assert_eq!(relate(3, 1, carol_s).await.status, StatusCode::FORBIDDEN);
+    let related = relate(3, 1, bob_s).await;
+    assert_eq!(related.status, StatusCode::OK, "{}", related.json);
+    assert_eq!(related.json["related"][0]["number"], 1);
+    assert_eq!(send(&app, GET, &format!("{issues}/1"), None, None).await.json["related"][0]["number"], 3);
+    assert_eq!(relate(1, 3, bob_s).await.status, StatusCode::UNPROCESSABLE_ENTITY, "twice, from the other side");
+    assert_eq!(relate(3, 3, bob_s).await.status, StatusCode::UNPROCESSABLE_ENTITY, "itself");
+    let unrelated = send(&app, DELETE, &format!("{issues}/1/relations/3"), Some(&bob), None).await;
+    assert_eq!(unrelated.json["related"].as_array().unwrap().len(), 0);
+    assert_eq!(send(&app, GET, &format!("{issues}/3"), None, None).await.json["related"].as_array().unwrap().len(), 0);
+    assert_eq!(send(&app, DELETE, &format!("{issues}/3/relations/1"), Some(&bob), None).await.status, StatusCode::NOT_FOUND);
     assert_eq!(kinds(&send(&app, GET, &format!("{issues}/2/timeline"), None, None).await.json), ["pinned", "unpinned", "parent_added", "sub_issue_added", "parent_removed"]);
 
     // Bulk edits behave like the single edit, once per issue.

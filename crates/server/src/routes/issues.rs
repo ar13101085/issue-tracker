@@ -101,7 +101,7 @@ pub struct IssueCtx {
     users: HashMap<ObjectId, String>,
     parents: HashMap<ObjectId, IssueRef>,
     children: HashMap<ObjectId, Vec<IssueRef>>,
-    /// Every issue named in a `blocked_by_ids` of the loaded issues.
+    /// Every issue named in a `blocked_by_ids` or `related_ids` of the loaded issues.
     blockers: HashMap<ObjectId, IssueRef>,
     /// For each loaded issue, the issues it blocks.
     blocking: HashMap<ObjectId, Vec<IssueRef>>,
@@ -143,7 +143,7 @@ impl IssueCtx {
                 }
             }
         }
-        let blocker_ids: Vec<ObjectId> = issues.iter().flat_map(|i| i.blocked_by_ids.iter().copied()).collect();
+        let blocker_ids: Vec<ObjectId> = issues.iter().flat_map(|i| i.blocked_by_ids.iter().chain(i.related_ids.iter()).copied()).collect();
         let mut blockers = HashMap::new();
         if !blocker_ids.is_empty() {
             let docs: Vec<IssueDoc> = state.db.issues.find(doc! {"_id": {"$in": blocker_ids}}).await?.try_collect().await?;
@@ -229,6 +229,7 @@ pub fn issue_dto(doc: IssueDoc, access: &RepoAccess, ctx: &IssueCtx) -> Issue {
         sub_issues: ctx.children.get(&doc.id).cloned().unwrap_or_default(),
         blocked_by: doc.blocked_by_ids.iter().filter_map(|id| ctx.blockers.get(id).cloned()).collect(),
         blocking: ctx.blocking.get(&doc.id).cloned().unwrap_or_default(),
+        related: doc.related_ids.iter().filter_map(|id| ctx.blockers.get(id).cloned()).collect(),
         reactions: reaction_groups(ctx.reactions.get(&doc.id), access.viewer.as_ref()),
         viewer_can_edit: is_author || access.has(Role::Write),
         viewer_can_close: is_author || access.has(Role::Triage),
@@ -589,6 +590,7 @@ pub async fn create(
         pinned: false,
         parent_id: None,
         blocked_by_ids: Vec::new(),
+        related_ids: Vec::new(),
     };
     state.db.issues.insert_one(&issue).await?;
     record_references(&state, &issue, user, &rendered.issue_refs).await?;
@@ -820,6 +822,7 @@ pub async fn purge(state: &AppState, issue: &IssueDoc) -> Result<(), ApiError> {
     state.db.events.delete_many(doc! {"$or": [{"issue_id": issue.id}, {"source_issue_id": issue.id}]}).await?;
     state.db.issues.update_many(doc! {"parent_id": issue.id}, doc! {"$set": {"parent_id": Bson::Null}}).await?;
     state.db.issues.update_many(doc! {"blocked_by_ids": issue.id}, doc! {"$pull": {"blocked_by_ids": issue.id}}).await?;
+    state.db.issues.update_many(doc! {"related_ids": issue.id}, doc! {"$pull": {"related_ids": issue.id}}).await?;
     crate::notify::issue_deleted(state, issue).await;
     state.db.issues.delete_one(doc! {"_id": issue.id}).await?;
     Ok(())

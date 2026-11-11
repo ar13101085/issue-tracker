@@ -179,6 +179,9 @@ pub struct Issue {
     /// Issues waiting on this one.
     #[serde(default)]
     pub blocking: Vec<IssueRef>,
+    /// Issues linked as related; the link shows on both.
+    #[serde(default)]
+    pub related: Vec<IssueRef>,
     pub reactions: Vec<ReactionGroup>,
     pub viewer_can_edit: bool,
     pub viewer_can_close: bool,
@@ -300,6 +303,8 @@ pub enum EventKind {
     BlockedByRemoved,
     BlockingAdded,
     BlockingRemoved,
+    RelatedAdded,
+    RelatedRemoved,
     TypeChanged,
 }
 

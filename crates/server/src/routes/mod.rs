@@ -93,6 +93,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/issues/{number}/pin", web::delete().to(issue_actions::unpin))
                 .route("/issues/{number}/sub_issues", web::post().to(issue_actions::add_sub_issue))
                 .route("/issues/{number}/sub_issues/{child}", web::delete().to(issue_actions::remove_sub_issue))
+                .route("/issues/{number}/relations", web::post().to(issue_actions::add_related))
+                .route("/issues/{number}/relations/{other}", web::delete().to(issue_actions::remove_related))
                 .route("/issues/{number}/dependencies/blocked_by", web::post().to(issue_actions::add_blocked_by))
                 .route("/issues/{number}/dependencies/blocked_by/{blocker}", web::delete().to(issue_actions::remove_blocked_by))
                 .route("/issues/{number}/transfer", web::post().to(issue_actions::transfer))

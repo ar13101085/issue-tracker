@@ -110,6 +110,9 @@ pub struct IssueDoc {
     /// Issues that block this one.
     #[serde(default)]
     pub blocked_by_ids: Vec<ObjectId>,
+    /// Issues this one relates to; kept on both issues.
+    #[serde(default)]
+    pub related_ids: Vec<ObjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -27,7 +27,7 @@ export function SidebarSection({ title, action, children }: { title: string; act
 }
 
 // The select panel hands its click handler and ref to the trigger, so they must reach the button.
-function Gear({ label, ...rest }: { label: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
+export function Gear({ label, ...rest }: { label: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button type="button" {...rest} aria-label={label} className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-fg-muted hover:bg-control-transparent-hover hover:text-fg-accent">
       <GearIcon size={16} />

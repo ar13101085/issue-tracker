@@ -15,6 +15,7 @@ use shared::{BulkUpdate, EventKind, IssueLocation, LockRequest, Role, SubIssueRe
 const MAX_PINNED: u64 = 3;
 const MAX_SUB_ISSUES: u64 = 100;
 const MAX_BLOCKERS: usize = 50;
+const MAX_RELATED: usize = 50;
 const MAX_BULK: usize = 100;
 
 async fn event(state: &AppState, issue: &IssueDoc, actor: &UserDoc, kind: EventKind, edit: impl FnOnce(&mut EventDoc)) -> Result<(), ApiError> {
@@ -215,6 +216,53 @@ pub async fn remove_blocked_by(state: web::Data<AppState>, viewer: Viewer, path:
     respond(&state, &access, number).await
 }
 
+/// `POST /issues/{number}/relations`: links two issues as related. The link has no direction.
+pub async fn add_related(state: web::Data<AppState>, viewer: Viewer, path: IssuePath, body: web::Json<SubIssueRequest>) -> Result<HttpResponse, ApiError> {
+    let (owner, name, number) = path.into_inner();
+    let access = load_repo(&state, &owner, &name, viewer.0).await?;
+    let user = access.require(Role::Triage)?;
+    let issue = find_issue(&state, &access, number).await?;
+    let fail = |m: &str| ApiError::field("number", m);
+    let other = match find_issue(&state, &access, body.number).await {
+        Ok(o) => o,
+        Err(ApiError::NotFound) => return Err(fail("That issue does not exist in this repository")),
+        Err(e) => return Err(e),
+    };
+    if other.id == issue.id {
+        return Err(fail("An issue cannot relate to itself"));
+    }
+    if issue.related_ids.contains(&other.id) {
+        return Err(fail("Those issues are already related"));
+    }
+    if issue.related_ids.len() >= MAX_RELATED || other.related_ids.len() >= MAX_RELATED {
+        return Err(fail("An issue can relate to at most 50 issues"));
+    }
+    state.db.issues.update_one(doc! {"_id": issue.id}, doc! {"$addToSet": {"related_ids": other.id}}).await?;
+    state.db.issues.update_one(doc! {"_id": other.id}, doc! {"$addToSet": {"related_ids": issue.id}}).await?;
+    event(&state, &issue, user, EventKind::RelatedAdded, |e| e.source_issue_id = Some(other.id)).await?;
+    event(&state, &other, user, EventKind::RelatedAdded, |e| e.source_issue_id = Some(issue.id)).await?;
+    signal_issue(&state, access.repo.id, other.number);
+    respond(&state, &access, number).await
+}
+
+/// `DELETE /issues/{number}/relations/{other}`
+pub async fn remove_related(state: web::Data<AppState>, viewer: Viewer, path: web::Path<(String, String, i64, i64)>) -> Result<HttpResponse, ApiError> {
+    let (owner, name, number, other_number) = path.into_inner();
+    let access = load_repo(&state, &owner, &name, viewer.0).await?;
+    let user = access.require(Role::Triage)?;
+    let issue = find_issue(&state, &access, number).await?;
+    let other = find_issue(&state, &access, other_number).await?;
+    if !issue.related_ids.contains(&other.id) {
+        return Err(ApiError::NotFound);
+    }
+    state.db.issues.update_one(doc! {"_id": issue.id}, doc! {"$pull": {"related_ids": other.id}}).await?;
+    state.db.issues.update_one(doc! {"_id": other.id}, doc! {"$pull": {"related_ids": issue.id}}).await?;
+    event(&state, &issue, user, EventKind::RelatedRemoved, |e| e.source_issue_id = Some(other.id)).await?;
+    event(&state, &other, user, EventKind::RelatedRemoved, |e| e.source_issue_id = Some(issue.id)).await?;
+    signal_issue(&state, access.repo.id, other.number);
+    respond(&state, &access, number).await
+}
+
 /// Moves an issue, with its comments and history, to another repository.
 pub async fn transfer(state: web::Data<AppState>, viewer: Viewer, path: IssuePath, body: web::Json<TransferRequest>) -> Result<HttpResponse, ApiError> {
     let (owner, name, number) = path.into_inner();
@@ -247,6 +295,7 @@ pub async fn transfer(state: web::Data<AppState>, viewer: Viewer, path: IssuePat
     state.db.issues.update_many(doc! {"parent_id": issue.id}, doc! {"$set": {"parent_id": Bson::Null}}).await?;
     // Relationships stay inside one repository.
     state.db.issues.update_many(doc! {"blocked_by_ids": issue.id}, doc! {"$pull": {"blocked_by_ids": issue.id}}).await?;
+    state.db.issues.update_many(doc! {"related_ids": issue.id}, doc! {"$pull": {"related_ids": issue.id}}).await?;
     state
         .db
         .issues
@@ -254,7 +303,7 @@ pub async fn transfer(state: web::Data<AppState>, viewer: Viewer, path: IssuePat
             doc! {"_id": issue.id},
             doc! {"$set": {
                 "repo_id": target.repo.id, "number": new_number, "label_ids": label_ids,
-                "milestone_id": Bson::Null, "parent_id": Bson::Null, "blocked_by_ids": [], "pinned": false, "updated_at": DateTime::now(),
+                "milestone_id": Bson::Null, "parent_id": Bson::Null, "blocked_by_ids": [], "related_ids": [], "pinned": false, "updated_at": DateTime::now(),
             }},
         )
         .await?;
