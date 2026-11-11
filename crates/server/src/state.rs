@@ -18,6 +18,7 @@ pub struct Db {
     pub events: Collection<EventDoc>,
     pub labels: Collection<LabelDoc>,
     pub milestones: Collection<MilestoneDoc>,
+    pub views: Collection<crate::models::ViewDoc>,
     pub reactions: Collection<ReactionDoc>,
     pub subscriptions: Collection<SubscriptionDoc>,
     pub notifications: Collection<NotificationDoc>,
@@ -58,6 +59,7 @@ pub async fn init(cfg: Config) -> Result<AppState, String> {
         events: database.collection("events"),
         labels: database.collection("labels"),
         milestones: database.collection("milestones"),
+        views: database.collection("views"),
         reactions: database.collection("reactions"),
         subscriptions: database.collection("subscriptions"),
         notifications: database.collection("notifications"),
@@ -86,6 +88,7 @@ pub async fn init(cfg: Config) -> Result<AppState, String> {
     db.milestones.create_index(unique(doc! {"repo_id": 1, "title_lower": 1})).await.map_err(err)?;
     db.reactions.create_index(unique(doc! {"subject_id": 1, "user_id": 1, "content": 1})).await.map_err(err)?;
     db.issues.create_index(plain(doc! {"parent_id": 1})).await.map_err(err)?;
+    db.views.create_index(plain(doc! {"repo_id": 1, "name_lower": 1})).await.map_err(err)?;
     db.issues.create_index(plain(doc! {"blocked_by_ids": 1})).await.map_err(err)?;
     db.subscriptions.create_index(unique(doc! {"issue_id": 1, "user_id": 1})).await.map_err(err)?;
     db.notifications.create_index(unique(doc! {"user_id": 1, "issue_id": 1})).await.map_err(err)?;

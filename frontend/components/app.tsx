@@ -6,6 +6,7 @@ import { LoginPage, SignupPage } from "@/components/pages/auth";
 import { IssuePage, NewIssuePage } from "@/components/pages/issue";
 import { IssuesListPage } from "@/components/pages/issues-list";
 import { LabelsPage } from "@/components/pages/labels";
+import { ViewFormPage, ViewsPage } from "@/components/pages/views";
 import { MilestoneFormPage, MilestonesPage } from "@/components/pages/milestones";
 import { ProjectPage } from "@/components/pages/project";
 import { ProjectsPage } from "@/components/pages/projects";
@@ -35,6 +36,12 @@ function RepoPage({ route }: { route: Extract<Route, { repo: string }> }) {
       return <SettingsPage owner={owner} repo={repo} section={route.section} />;
     case "labels":
       return <LabelsPage owner={owner} repo={repo} />;
+    case "views":
+      return <ViewsPage owner={owner} repo={repo} />;
+    case "view-new":
+      return <ViewFormPage owner={owner} repo={repo} />;
+    case "view-edit":
+      return <ViewFormPage owner={owner} repo={repo} id={route.id} />;
     case "milestones":
       return <MilestonesPage owner={owner} repo={repo} />;
     case "milestone-new":

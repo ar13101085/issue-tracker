@@ -153,10 +153,14 @@ Phase 0 থেকে 8 সবগুলো তৈরি হয়েছে।
 - Email পাঠানো আসল SMTP server দিয়ে পরীক্ষা হয়নি; test-এ শুধু queue পর্যন্ত যাচাই হয়েছে।
 - Relationships: GitHub-এর মতো gear → menu → issue picker। Parent/sub-issue, "blocked by", "blocking" আর "relates to" আছে
   (sidebar, timeline, `it issue block/unblock/relate/unrelate`)। সম্পর্ক শুধু একই repository-র ভেতরে। GitHub-এর keyboard
-  shortcut (B B, B X, B R), "Add security alert" আর search-এর `is:blocked` / `is:blocking` qualifier নেই।
+  shortcut (B B, B X, B R) আর "Add security alert" নেই।
 - Avatar upload নেই, login থেকে তৈরি identicon দেখায়।
 - Organization নেই, repo-র মালিক শুধু user।
-- Task list-এর checkbox page থেকে টিক দেওয়া যায় না, comment edit করে বদলাতে হয়।
-- Search-এ `mentions:`, `commenter:`, `involves:`, `project:` qualifier নেই।
+- Search-এ `project:` qualifier নেই। `mentions:`, `commenter:`, `involves:`, `is:blocked`, `is:blocking` আছে; তবে এই feature-এর আগে
+  তৈরি issue-তে mention/commenter-এর তথ্য জমা নেই, নতুন comment বা edit থেকে জমে।
+- Saved Views আছে (`/owner/repo/issues/views`): private view শুধু নিজের, shared view সবার; shared বানাতে/বদলাতে write role লাগে।
+  GitHub-এর view-এর icon বাছা আর form-এর নিচে সরাসরি ফলাফল দেখানো নেই ("Preview results" লিংক আছে)।
+- GitHub-এ আছে, আমাদের নেই: issue list-এর density toggle, notification "Customize", keyboard shortcut,
+  Development (branch/PR) অংশ, custom issue Fields।
 - Password reset আর email যাচাই নেই।
 - Deployment target ঠিক হয়নি, তাই `deploy/` script নেই।

@@ -18,6 +18,9 @@ export type Route =
   | { name: "issue-new"; owner: string; repo: string }
   | { name: "issue"; owner: string; repo: string; number: number }
   | { name: "labels"; owner: string; repo: string }
+  | { name: "views"; owner: string; repo: string }
+  | { name: "view-new"; owner: string; repo: string }
+  | { name: "view-edit"; owner: string; repo: string; id: string }
   | { name: "milestones"; owner: string; repo: string }
   | { name: "milestone-new"; owner: string; repo: string }
   | { name: "milestone-edit"; owner: string; repo: string; number: number }
@@ -50,6 +53,11 @@ export function matchRoute(pathname: string): Route {
   if (c === "issues") {
     if (parts.length === 3) return { name: "issues", ...base };
     if (parts.length === 4 && d === "new") return { name: "issue-new", ...base };
+    if (d === "views") {
+      if (parts.length === 4) return { name: "views", ...base };
+      if (parts.length === 5 && parts[4] === "new") return { name: "view-new", ...base };
+      if (parts.length === 6 && /^[0-9a-f]{24}$/.test(parts[4]) && parts[5] === "edit") return { name: "view-edit", ...base, id: parts[4] };
+    }
     if (parts.length === 4 && /^[1-9]\d*$/.test(d)) return { name: "issue", ...base, number: Number(d) };
   }
   if (c === "labels" && parts.length === 3) return { name: "labels", ...base };

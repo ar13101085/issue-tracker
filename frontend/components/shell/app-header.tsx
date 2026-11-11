@@ -174,7 +174,7 @@ function RepoNav({ owner, repo, route, openIssues, admin }: { owner: string; rep
       href: `${base}/issues`,
       icon: <IssueOpenedIcon size={16} />,
       count: openIssues,
-      active: ["issues", "issue", "issue-new", "labels", "milestones", "milestone-new", "milestone-edit"].includes(route.name),
+      active: ["issues", "issue", "issue-new", "views", "view-new", "view-edit", "labels", "milestones", "milestone-new", "milestone-edit"].includes(route.name),
     },
     { label: "Projects", href: `${base}/projects`, icon: <TableIcon size={16} />, active: route.name === "projects" || route.name === "project" },
     ...(admin ? [{ label: "Settings", href: `${base}/settings`, icon: <GearIcon size={16} />, active: route.name === "settings" }] : []),

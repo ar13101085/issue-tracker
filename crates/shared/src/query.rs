@@ -30,6 +30,16 @@ pub struct IssueQuery {
     pub missing: Vec<Missing>,
     pub author: Option<String>,
     pub assignee: Option<String>,
+    /// `mentions:login`: mentioned in the description or a comment.
+    pub mentions: Option<String>,
+    /// `commenter:login`: wrote a comment.
+    pub commenter: Option<String>,
+    /// `involves:login`: author, assignee, mentioned or commenter.
+    pub involves: Option<String>,
+    /// `is:blocked`: waits on at least one other issue.
+    pub blocked: bool,
+    /// `is:blocking`: at least one other issue waits on it.
+    pub blocking: bool,
     pub milestone: Option<String>,
     pub issue_type: Option<String>,
     pub sort: SortField,
@@ -50,6 +60,11 @@ impl Default for IssueQuery {
             missing: Vec::new(),
             author: None,
             assignee: None,
+            mentions: None,
+            commenter: None,
+            involves: None,
+            blocked: false,
+            blocking: false,
             milestone: None,
             issue_type: None,
             sort: SortField::Created,
@@ -116,6 +131,14 @@ pub fn parse(q: &str) -> IssueQuery {
                     true
                 }
                 "issue" => key == "is",
+                "blocked" if key == "is" => {
+                    out.blocked = true;
+                    true
+                }
+                "blocking" if key == "is" => {
+                    out.blocking = true;
+                    true
+                }
                 _ => false,
             },
             ("label", false) if !value.is_empty() => {
@@ -145,6 +168,18 @@ pub fn parse(q: &str) -> IssueQuery {
             }
             ("assignee", false) if !value.is_empty() => {
                 out.assignee = Some(value.clone());
+                true
+            }
+            ("mentions", false) if !value.is_empty() => {
+                out.mentions = Some(value.clone());
+                true
+            }
+            ("commenter", false) if !value.is_empty() => {
+                out.commenter = Some(value.clone());
+                true
+            }
+            ("involves", false) if !value.is_empty() => {
+                out.involves = Some(value.clone());
                 true
             }
             ("milestone", false) if !value.is_empty() => {

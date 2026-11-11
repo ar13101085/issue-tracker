@@ -64,7 +64,7 @@ export function parseQuery(q: string): ParsedQuery {
     const [key, value] = pair ?? ["", ""];
     const lower = value.toLowerCase();
     if ((key === "state" || key === "is") && (lower === "open" || lower === "closed")) out.state = lower;
-    else if (key === "is" && lower === "issue") continue;
+    else if (key === "is" && ["issue", "blocked", "blocking"].includes(lower)) continue;
     else if (key === "sort" && SORTS.some((s) => s.key === lower)) out.sort = lower as SortKey;
     else if (key === "label" && value) out.labels.push(value);
     else if (key === "no" && ["label", "assignee", "milestone", "type"].includes(lower)) out.no.push(lower as NoField);
@@ -72,7 +72,7 @@ export function parseQuery(q: string): ParsedQuery {
     else if (key === "assignee" && value) out.assignee = value;
     else if (key === "milestone" && value) out.milestone = value;
     else if (key === "type" && value) out.type = value;
-    else if (!pair || !["-label", "in"].includes(key)) words.push(unquote(token));
+    else if (!pair || !["-label", "in", "mentions", "commenter", "involves"].includes(key)) words.push(unquote(token));
   }
   out.text = words.join(" ");
   return out;

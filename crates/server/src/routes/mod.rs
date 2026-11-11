@@ -7,6 +7,7 @@ pub mod issue_actions;
 pub mod issues;
 pub mod labels;
 pub mod milestones;
+pub mod views;
 pub mod notifications;
 pub mod projects;
 pub mod repos;
@@ -56,6 +57,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/labels", web::post().to(labels::create))
                 .route("/labels/{name}", web::patch().to(labels::update))
                 .route("/labels/{name}", web::delete().to(labels::delete))
+                .route("/views", web::get().to(views::list))
+                .route("/views", web::post().to(views::create))
+                .route("/views/{id}", web::get().to(views::get))
+                .route("/views/{id}", web::patch().to(views::update))
+                .route("/views/{id}", web::delete().to(views::delete))
                 .route("/milestones", web::get().to(milestones::list))
                 .route("/milestones", web::post().to(milestones::create))
                 .route("/milestones/{number}", web::get().to(milestones::get))
@@ -79,6 +85,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/issues/comments/{id}", web::patch().to(comments::update))
                 .route("/issues/comments/{id}", web::delete().to(comments::delete))
                 .route("/issues/comments/{id}/edits", web::get().to(comments::edits))
+                .route("/issues/comments/{id}/minimize", web::put().to(comments::minimize))
+                .route("/issues/comments/{id}/minimize", web::delete().to(comments::unminimize))
                 .route("/issues", web::get().to(issues::list))
                 .route("/issues", web::post().to(issues::create))
                 .route("/issues/{number}", web::get().to(issues::get))

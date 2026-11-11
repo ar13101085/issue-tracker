@@ -15,7 +15,7 @@ use actix_web::{web, HttpResponse};
 use futures::TryStreamExt;
 use mongodb::bson::{doc, oid::ObjectId, DateTime};
 use serde::Deserialize;
-use shared::{Comment, CommentBody, Event, MarkdownRequest, MarkdownResponse, Role, TimelineItem, UserRef};
+use shared::{Comment, CommentBody, Event, HideRequest, MarkdownRequest, MarkdownResponse, Role, TimelineItem, UserRef};
 use std::collections::HashMap;
 
 type CommentPath = web::Path<(String, String, String)>;
@@ -35,6 +35,8 @@ fn comment_dto(doc: CommentDoc, access: &RepoAccess, assoc: &Associations, react
         reactions: reaction_groups(reactions, access.viewer.as_ref()),
         viewer_can_edit: can,
         viewer_can_delete: can,
+        minimized: doc.minimized,
+        viewer_can_minimize: access.has(Role::Triage),
     }
 }
 
@@ -124,12 +126,20 @@ pub async fn create(
         edits: Vec::new(),
         created_at: now,
         updated_at: now,
+        minimized: None,
     };
     state.db.comments.insert_one(&comment).await?;
     state
         .db
         .issues
-        .update_one(doc! {"_id": issue.id}, doc! {"$inc": {"comments": 1}, "$set": {"updated_at": now}})
+        .update_one(
+            doc! {"_id": issue.id},
+            doc! {
+                "$inc": {"comments": 1},
+                "$set": {"updated_at": now},
+                "$addToSet": {"commenter_ids": user.id, "mentioned_ids": {"$each": rendered.mentions.clone()}},
+            },
+        )
         .await?;
     record_references(&state, &issue, user, &rendered.issue_refs).await?;
     crate::notify::commented(&state, &access.repo, &issue, user, &comment, &rendered.mentions).await;
@@ -170,6 +180,9 @@ pub async fn update(
                 doc! {"$set": {"body": &body.body, "body_html": rendered.html, "updated_at": now}, "$push": {"edits": bson(&old)?}},
             )
             .await?;
+        if !rendered.mentions.is_empty() {
+            state.db.issues.update_one(doc! {"_id": comment.issue_id}, doc! {"$addToSet": {"mentioned_ids": {"$each": rendered.mentions.clone()}}}).await?;
+        }
         if let Some(issue) = state.db.issues.find_one(doc! {"_id": comment.issue_id}).await? {
             record_references(&state, &issue, &user, &rendered.issue_refs).await?;
             crate::notify::signal_issue(&state, access.repo.id, issue.number);
@@ -188,11 +201,45 @@ pub async fn delete(state: web::Data<AppState>, viewer: Viewer, path: CommentPat
     let (comment, _) = own_comment(&state, &access, &id).await?;
     state.db.comments.delete_one(doc! {"_id": comment.id}).await?;
     state.db.reactions.delete_many(doc! {"subject_id": comment.id}).await?;
-    state.db.issues.update_one(doc! {"_id": comment.issue_id}, doc! {"$inc": {"comments": -1}}).await?;
+    // `commenter:` searches must stop matching once someone's last comment is gone.
+    let authors = state.db.comments.distinct("author_id", doc! {"issue_id": comment.issue_id}).await?;
+    state.db.issues.update_one(doc! {"_id": comment.issue_id}, doc! {"$inc": {"comments": -1}, "$set": {"commenter_ids": authors}}).await?;
     if let Some(issue) = state.db.issues.find_one(doc! {"_id": comment.issue_id}).await? {
         crate::notify::signal_issue(&state, access.repo.id, issue.number);
     }
     Ok(HttpResponse::NoContent().finish())
+}
+
+/// Hides or shows a comment. `reason` is `None` to show it again.
+async fn set_minimized(state: &AppState, viewer: Viewer, path: CommentPath, reason: Option<String>) -> Result<HttpResponse, ApiError> {
+    let (owner, name, id) = path.into_inner();
+    let access = load_repo(state, &owner, &name, viewer.0).await?;
+    access.require(Role::Triage)?;
+    let id = ObjectId::parse_str(&id).map_err(|_| ApiError::NotFound)?;
+    let filter = doc! {"_id": id, "repo_id": access.repo.id};
+    let comment = state.db.comments.find_one(filter.clone()).await?.ok_or(ApiError::NotFound)?;
+    state.db.comments.update_one(filter.clone(), doc! {"$set": {"minimized": bson(&reason)?}}).await?;
+    if let Some(issue) = state.db.issues.find_one(doc! {"_id": comment.issue_id}).await? {
+        crate::notify::signal_issue(state, access.repo.id, issue.number);
+    }
+    let comment = state.db.comments.find_one(filter).await?.ok_or(ApiError::NotFound)?;
+    let assoc = Associations::load(state, &access.repo).await?;
+    let reactions = load_reactions(state, vec![comment.id]).await?;
+    let mine = reactions.get(&comment.id);
+    Ok(HttpResponse::Ok().json(comment_dto(comment, &access, &assoc, mine)))
+}
+
+/// `PUT /issues/comments/{id}/minimize`
+pub async fn minimize(state: web::Data<AppState>, viewer: Viewer, path: CommentPath, body: web::Json<HideRequest>) -> Result<HttpResponse, ApiError> {
+    if !shared::HIDE_REASONS.contains(&body.reason.as_str()) {
+        return Err(ApiError::field("reason", "Choose one of: abuse, spam, off-topic, outdated, duplicate, resolved"));
+    }
+    set_minimized(&state, viewer, path, Some(body.reason.clone())).await
+}
+
+/// `DELETE /issues/comments/{id}/minimize`
+pub async fn unminimize(state: web::Data<AppState>, viewer: Viewer, path: CommentPath) -> Result<HttpResponse, ApiError> {
+    set_minimized(&state, viewer, path, None).await
 }
 
 /// `GET /issues/comments/{id}/edits`

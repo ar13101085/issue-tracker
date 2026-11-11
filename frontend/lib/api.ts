@@ -112,7 +112,12 @@ export type Comment = {
   reactions: ReactionGroup[];
   viewer_can_edit: boolean;
   viewer_can_delete: boolean;
+  /** Why the comment is hidden; null when it is shown. */
+  minimized: string | null;
+  viewer_can_minimize: boolean;
 };
+export type SavedView = { id: string; name: string; description: string; query: string; shared: boolean; viewer_can_edit: boolean; created_at: string };
+export const HIDE_REASONS = ["abuse", "spam", "off-topic", "outdated", "duplicate", "resolved"] as const;
 export type Edit = { editor: { login: string }; edited_at: string; body: string };
 export type EventKind =
   | "closed"

@@ -289,6 +289,37 @@ async fn lock_pin_sub_issues_bulk_and_reactions() {
     assert_eq!(unrelated.json["related"].as_array().unwrap().len(), 0);
     assert_eq!(send(&app, GET, &format!("{issues}/3"), None, None).await.json["related"].as_array().unwrap().len(), 0);
     assert_eq!(send(&app, DELETE, &format!("{issues}/3/relations/1"), Some(&bob), None).await.status, StatusCode::NOT_FOUND);
+
+    // Search by relationship and by who took part.
+    let search = |text: &'static str| {
+        let path = format!("{issues}?state=all&q={}", q(text));
+        let app = &app;
+        async move { numbers(&send(app, GET, &path, None, None).await.json) }
+    };
+    assert_eq!(block(3, 4, bob_s).await.status, StatusCode::OK);
+    assert_eq!(search("is:blocked").await, [4, 3], "#4 still waits on #1");
+    assert_eq!(search("is:blocking").await, [4, 1]);
+    assert_eq!(search("commenter:carol").await, [1]);
+    let said = send(&app, POST, &format!("{issues}/4/comments"), Some(&carol), Some(json!({"body": "over to @bob"}))).await;
+    assert_eq!(said.status, StatusCode::CREATED, "{}", said.json);
+    assert_eq!(search("commenter:carol").await, [4, 1]);
+
+    // Hiding a comment: triage and up, with a known reason.
+    let hide = format!("{repo}/issues/comments/{}/minimize", said.json["id"].as_str().unwrap());
+    assert_eq!(send(&app, PUT, &hide, Some(&carol), Some(json!({"reason": "spam"}))).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(send(&app, PUT, &hide, Some(&bob), Some(json!({"reason": "boring"}))).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let hidden = send(&app, PUT, &hide, Some(&bob), Some(json!({"reason": "off-topic"}))).await;
+    assert_eq!(hidden.status, StatusCode::OK, "{}", hidden.json);
+    assert_eq!(hidden.json["minimized"], "off-topic");
+    let listed = send(&app, GET, &format!("{issues}/4/timeline"), None, None).await;
+    assert!(listed.json.as_array().unwrap().iter().any(|i| i["minimized"] == "off-topic"), "{}", listed.json);
+    assert_eq!(send(&app, DELETE, &hide, Some(&bob), None).await.json["minimized"], Value::Null);
+    assert_eq!(search("mentions:bob").await, [4]);
+    assert_eq!(search("involves:bob").await, [4, 1], "mentioned on #4, commented on #1");
+    assert_eq!(search("commenter:nobody").await, [] as [i64; 0]);
+    let comment_id = said.json["id"].as_str().unwrap();
+    assert_eq!(send(&app, DELETE, &format!("{repo}/issues/comments/{comment_id}"), Some(&carol), None).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(search("commenter:carol").await, [1]);
     assert_eq!(kinds(&send(&app, GET, &format!("{issues}/2/timeline"), None, None).await.json), ["pinned", "unpinned", "parent_added", "sub_issue_added", "parent_removed"]);
 
     // Bulk edits behave like the single edit, once per issue.
@@ -711,6 +742,57 @@ async fn projects_fields_and_ordering() {
     assert_eq!(send(&app, DELETE, &p, Some(&bob), None).await.status, StatusCode::FORBIDDEN);
     assert_eq!(send(&app, DELETE, &p, Some(&alice), None).await.status, StatusCode::NO_CONTENT);
     assert_eq!(st.db.project_items.count_documents(mongodb::bson::doc! {}).await.unwrap(), 0);
+
+    drop_db(&st).await;
+}
+
+#[actix_web::test]
+async fn saved_views_private_and_shared() {
+    let st = state().await;
+    let app = app!(st);
+    let alice = signup(&app, "alice").await;
+    let bob = signup(&app, "bob").await;
+    let carol = signup(&app, "carol").await;
+    send(&app, POST, "/api/user/repos", Some(&alice), Some(json!({"name": "app"}))).await;
+    let views = "/api/repos/alice/app/views";
+    let titles = |v: &Value| v.as_array().unwrap().iter().map(|i| i["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+
+    // Anyone signed in may keep private views; only write and up may share.
+    assert_eq!(send(&app, POST, views, None, Some(json!({"name": "Mine", "query": "is:open"}))).await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(send(&app, POST, views, Some(&carol), Some(json!({"name": " ", "query": "is:open"}))).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(send(&app, POST, views, Some(&carol), Some(json!({"name": "Mine", "query": " "}))).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let private = send(&app, POST, views, Some(&carol), Some(json!({"name": "Mine", "query": "is:issue state:open author:@me"}))).await;
+    assert_eq!(private.status, StatusCode::CREATED, "{}", private.json);
+    assert_eq!((private.json["shared"].as_bool(), private.json["viewer_can_edit"].as_bool()), (Some(false), Some(true)));
+    assert_eq!(send(&app, POST, views, Some(&carol), Some(json!({"name": "Team", "query": "is:open", "shared": true}))).await.status, StatusCode::FORBIDDEN);
+    let shared = send(&app, POST, views, Some(&alice), Some(json!({"name": "Bugs", "description": "Open bugs", "query": "is:open label:bug", "shared": true}))).await;
+    assert_eq!(shared.status, StatusCode::CREATED, "{}", shared.json);
+
+    // A private view exists only for its owner.
+    assert_eq!(titles(&send(&app, GET, views, Some(&carol), None).await.json), ["Bugs", "Mine"]);
+    assert_eq!(titles(&send(&app, GET, views, Some(&bob), None).await.json), ["Bugs"]);
+    assert_eq!(titles(&send(&app, GET, views, None, None).await.json), ["Bugs"]);
+    let mine = format!("{views}/{}", private.json["id"].as_str().unwrap());
+    let team = format!("{views}/{}", shared.json["id"].as_str().unwrap());
+    assert_eq!(send(&app, GET, &mine, Some(&bob), None).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(send(&app, PATCH, &mine, Some(&alice), Some(json!({"name": "Taken"}))).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(send(&app, DELETE, &mine, Some(&bob), None).await.status, StatusCode::NOT_FOUND);
+
+    // Shared views: everyone reads, write and up changes.
+    assert_eq!(send(&app, GET, &team, None, None).await.json["viewer_can_edit"], false);
+    assert_eq!(send(&app, PATCH, &team, Some(&carol), Some(json!({"name": "Hijacked"}))).await.status, StatusCode::FORBIDDEN);
+    let renamed = send(&app, PATCH, &team, Some(&alice), Some(json!({"name": "Open bugs", "query": "is:open label:bug sort:updated-desc"}))).await;
+    assert_eq!((renamed.json["name"].as_str(), renamed.json["query"].as_str()), (Some("Open bugs"), Some("is:open label:bug sort:updated-desc")));
+    assert_eq!(send(&app, PATCH, &mine, Some(&carol), Some(json!({"shared": true}))).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(send(&app, PATCH, &mine, Some(&carol), Some(json!({"name": "My issues"}))).await.json["name"], "My issues");
+    assert_eq!(send(&app, DELETE, &team, Some(&carol), None).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(send(&app, DELETE, &team, Some(&alice), None).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(send(&app, DELETE, &mine, Some(&carol), None).await.status, StatusCode::NO_CONTENT);
+
+    // In a private repository the views are as hidden as the repository.
+    send(&app, POST, "/api/user/repos", Some(&alice), Some(json!({"name": "secret", "private": true}))).await;
+    send(&app, POST, "/api/repos/alice/secret/views", Some(&alice), Some(json!({"name": "Plans", "query": "is:open", "shared": true}))).await;
+    assert_eq!(send(&app, GET, "/api/repos/alice/secret/views", Some(&bob), None).await.status, StatusCode::NOT_FOUND);
 
     drop_db(&st).await;
 }

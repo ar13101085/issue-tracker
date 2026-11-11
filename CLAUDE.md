@@ -34,6 +34,7 @@ self-hosted as one executable, plus a `gh issue`-style CLI. Talk to the user in 
 - The search syntax is parsed in `crates/shared/src/query.rs` and mirrored in
   `frontend/lib/query.ts`; change both together.
 - `notify.rs` must never fail the request that triggered it.
+- A private saved view (`routes/views.rs`) answers 404 to everyone but its owner; only write and up touch shared views.
 
 ## How the frontend is served
 
@@ -55,7 +56,10 @@ self-hosted as one executable, plus a `gh issue`-style CLI. Talk to the user in 
 
 - Node: `~/.nvm/versions/node/v24.19.0/bin` (the default `node` on PATH is v12 and will not work).
 - MongoDB: container `it-mongo` (mongo:7) on `127.0.0.1:27020`; tests create and drop
-  `it_test_*` databases there.
+  `it_test_*` databases there. It must run with `--ulimit nofile=64000:64000`: with Docker's
+  default of 1024 open files mongod aborts ("WiredTiger error 24") when the tests run twice in a
+  row, because it keeps the files of dropped databases open for ten minutes. To make it again:
+  `docker run -d --name it-mongo --restart unless-stopped --ulimit nofile=64000:64000 -p 127.0.0.1:27020:27017 mongo:7`.
 - Run: `./scripts/build-frontend.sh`, then `cargo run -p issue-tracker` (debug builds read
   `frontend/out` from disk). Server listens on `127.0.0.1:23500`. Settings: `.env.example`.
 - Demo data: `./scripts/seed-dev.sh` (users `demo`, `alice`, `bob`; password in the script).

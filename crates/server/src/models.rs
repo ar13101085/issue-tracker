@@ -113,6 +113,12 @@ pub struct IssueDoc {
     /// Issues this one relates to; kept on both issues.
     #[serde(default)]
     pub related_ids: Vec<ObjectId>,
+    /// Users mentioned in the description or in a comment; for `mentions:` searches.
+    #[serde(default)]
+    pub mentioned_ids: Vec<ObjectId>,
+    /// Users who commented; for `commenter:` searches.
+    #[serde(default)]
+    pub commenter_ids: Vec<ObjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +146,21 @@ pub struct MilestoneDoc {
     pub created_at: DateTime,
     pub updated_at: DateTime,
     pub closed_at: Option<DateTime>,
+}
+
+/// A saved issue search. See `routes/views.rs` for who may see and change it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewDoc {
+    #[serde(rename = "_id")]
+    pub id: ObjectId,
+    pub repo_id: ObjectId,
+    pub owner_id: ObjectId,
+    pub name: String,
+    pub name_lower: String,
+    pub description: String,
+    pub query: String,
+    pub shared: bool,
+    pub created_at: DateTime,
 }
 
 /// One emoji from one user on an issue body or a comment.
@@ -178,6 +199,9 @@ pub struct CommentDoc {
     pub edits: Vec<EditDoc>,
     pub created_at: DateTime,
     pub updated_at: DateTime,
+    /// Set while the comment is hidden: the reason.
+    #[serde(default)]
+    pub minimized: Option<String>,
 }
 
 /// Timeline entry that is not a comment.

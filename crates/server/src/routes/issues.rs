@@ -431,6 +431,31 @@ async fn query_filter(state: &AppState, access: &RepoAccess, q: &IssueQuery) -> 
             None => nothing(),
         });
     }
+    if let Some(login) = &q.mentions {
+        and.push(match user_id(login).await? {
+            Some(id) => doc! {"mentioned_ids": id},
+            None => nothing(),
+        });
+    }
+    if let Some(login) = &q.commenter {
+        and.push(match user_id(login).await? {
+            Some(id) => doc! {"commenter_ids": id},
+            None => nothing(),
+        });
+    }
+    if let Some(login) = &q.involves {
+        and.push(match user_id(login).await? {
+            Some(id) => doc! {"$or": [{"author_id": id}, {"assignee_ids": id}, {"mentioned_ids": id}, {"commenter_ids": id}]},
+            None => nothing(),
+        });
+    }
+    if q.blocked {
+        and.push(doc! {"blocked_by_ids.0": {"$exists": true}});
+    }
+    if q.blocking {
+        let ids = state.db.issues.distinct("blocked_by_ids", doc! {"repo_id": repo.id}).await?;
+        and.push(doc! {"_id": {"$in": ids}});
+    }
     if let Some(title) = &q.milestone {
         let found = state.db.milestones.find_one(doc! {"repo_id": repo.id, "title_lower": title.to_lowercase()}).await?;
         and.push(match found {
@@ -591,6 +616,8 @@ pub async fn create(
         parent_id: None,
         blocked_by_ids: Vec::new(),
         related_ids: Vec::new(),
+        mentioned_ids: rendered.mentions.clone(),
+        commenter_ids: Vec::new(),
     };
     state.db.issues.insert_one(&issue).await?;
     record_references(&state, &issue, user, &rendered.issue_refs).await?;
@@ -657,6 +684,9 @@ pub async fn apply_update(state: &AppState, access: &RepoAccess, issue: &IssueDo
             push.insert("edits", bson(&old)?);
             references = rendered.issue_refs;
             mentions = rendered.mentions;
+            if !mentions.is_empty() {
+                state.db.issues.update_one(doc! {"_id": issue.id}, doc! {"$addToSet": {"mentioned_ids": {"$each": mentions.clone()}}}).await?;
+            }
         }
     }
 

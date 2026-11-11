@@ -151,6 +151,7 @@ pub async fn delete(state: web::Data<AppState>, viewer: Viewer, path: RepoPath) 
     state.db.projects.delete_many(doc! {"repo_id": id}).await?;
     state.db.project_items.delete_many(doc! {"repo_id": id}).await?;
     state.db.milestones.delete_many(doc! {"repo_id": id}).await?;
+    state.db.views.delete_many(doc! {"repo_id": id}).await?;
     state.db.reactions.delete_many(doc! {"repo_id": id}).await?;
     state.db.notifications.delete_many(doc! {"repo_id": id}).await?;
     let issue_ids: Vec<ObjectId> = state.db.issues.distinct("_id", doc! {"repo_id": id}).await?.into_iter().filter_map(|b| b.as_object_id()).collect();

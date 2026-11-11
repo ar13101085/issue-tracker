@@ -1,18 +1,8 @@
 "use client";
 
-import {
-  ArrowRightIcon,
-  CheckIcon,
-  IssueClosedIcon,
-  IssueReopenedIcon,
-  LockIcon,
-  PinIcon,
-  SkipIcon,
-  TrashIcon,
-  TriangleDownIcon,
-  UnlockIcon,
-} from "@primer/octicons-react";
+import { ArrowRightIcon, CheckIcon, CopyIcon, IssueClosedIcon, IssueReopenedIcon, LockIcon, PinIcon, SkipIcon, TrashIcon, TriangleDownIcon, UnlockIcon } from "@primer/octicons-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 import { TypeBadge } from "@/components/issue/pickers";
 import { Reactions } from "@/components/issue/reactions";
@@ -43,7 +33,38 @@ function metadataBody(change: Partial<Metadata>, milestones: Milestone[] | undef
   return body;
 }
 
+type Prefill = { title: string; body: string; meta: Metadata };
+
+/**
+ * The address can prefill the form: `?parent=7` makes the new issue a sub-issue of #7,
+ * `?clone=7` copies #7, and `?title=…&body=…` start it with that text.
+ */
 export function NewIssuePage({ owner, repo }: { owner: string; repo: string }) {
+  const search = useSearchParams();
+  const number = (key: string) => {
+    const n = Number(search.get(key));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  };
+  const parent = number("parent");
+  const clone = number("clone");
+  const source = useSWR<Issue, ApiError>(clone ? `/repos/${owner}/${repo}/issues/${clone}` : null, api);
+  if (clone && source.error) return <PageError error={source.error} />;
+  if (clone && !source.data) return null;
+  const copied = source.data;
+  const text = search.get("title") || search.get("body");
+  const prefill: Prefill | null = copied
+    ? {
+        title: copied.title,
+        body: copied.body,
+        meta: { assignees: copied.assignees.map((a) => a.login), labels: copied.labels.map((l) => l.name), type: copied.issue_type, milestone: copied.milestone?.title ?? null },
+      }
+    : text
+      ? { title: search.get("title") ?? "", body: search.get("body") ?? "", meta: { assignees: [], labels: [], type: null, milestone: null } }
+      : null;
+  return <NewIssueForm key={`${clone}-${parent}`} owner={owner} repo={repo} parent={parent} prefill={prefill} />;
+}
+
+function NewIssueForm({ owner, repo, parent, prefill }: { owner: string; repo: string; parent: number | null; prefill: Prefill | null }) {
   useTitle(`New issue · ${owner}/${repo}`);
   const full = `${owner}/${repo}`;
   const base = `/${owner}/${repo}/issues`;
@@ -53,10 +74,11 @@ export function NewIssuePage({ owner, repo }: { owner: string; repo: string }) {
   const milestones = useSWR<Milestone[]>(`/repos/${full}/milestones?state=all`, api);
   const { mutate } = useSWRConfig();
   // `undefined`: still choosing. `null`: blank issue.
-  const [template, setTemplate] = useState<Template | null | undefined>(undefined);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [meta, setMeta] = useState<Metadata>({ assignees: [], labels: [], type: null, milestone: null });
+  // A prefilled form skips the template chooser.
+  const [template, setTemplate] = useState<Template | null | undefined>(prefill ? null : undefined);
+  const [title, setTitle] = useState(prefill?.title ?? "");
+  const [body, setBody] = useState(prefill?.body ?? "");
+  const [meta, setMeta] = useState<Metadata>(prefill?.meta ?? { assignees: [], labels: [], type: null, milestone: null });
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -99,6 +121,8 @@ export function NewIssuePage({ owner, repo }: { owner: string; repo: string }) {
     setError(null);
     try {
       const issue = await api<Issue>(`/repos/${full}/issues`, { method: "POST", body: { title, body, ...metadataBody(meta, milestones.data) } });
+      // The issue exists by now, so a failed link must not look like a failed create.
+      if (parent) await api(`/repos/${full}/issues/${parent}/sub_issues`, { method: "POST", body: { number: issue.number } }).catch(() => {});
       mutate(`/repos/${full}`);
       navigate(`${base}/${issue.number}`);
     } catch (err) {
@@ -119,8 +143,18 @@ export function NewIssuePage({ owner, repo }: { owner: string; repo: string }) {
           <Avatar login={user.login} size={40} className="hidden md:block" />
           <form onSubmit={submit} className="flex min-w-0 flex-1 flex-col gap-4">
             <h1 className="text-xl font-semibold">
-              Create new issue{template ? <span className="font-normal text-fg-muted"> · {template.name}</span> : null}
+              Create new {parent ? "sub-issue" : "issue"}
+              {template ? <span className="font-normal text-fg-muted"> · {template.name}</span> : null}
             </h1>
+            {parent && (
+              <p className="-mt-2 text-sm text-fg-muted">
+                It will be added as a sub-issue of{" "}
+                <Link href={`${base}/${parent}`} className="text-fg-accent hover:underline">
+                  #{parent}
+                </Link>
+                .
+              </p>
+            )}
             {error && (error.errors.length === 0 || !error.field("title")) && <Flash>{error.summary}</Flash>}
             <Field label="Add a title" htmlFor="issue-title" required error={error?.field("title")}>
               <TextInput id="issue-title" placeholder="Title" autoFocus maxLength={256} aria-invalid={!!error?.field("title")} value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -182,6 +216,7 @@ export function IssuePage({ owner, repo, number }: { owner: string; repo: string
   const { user } = useSession();
   const { data: repoData } = useRepo(owner, repo);
   const { data: issue, error, mutate } = useSWR<Issue, ApiError>(key, api);
+  const [linkCopied, setLinkCopied] = useState(false);
   const timeline = useSWR<TimelineItem[], ApiError>(`${key}/timeline`, api);
   const milestones = useSWR<Milestone[]>(`${repoPath}/milestones?state=all`, api);
   const { mutate: mutateAny } = useSWRConfig();
@@ -307,6 +342,19 @@ export function IssuePage({ owner, repo, number }: { owner: string; repo: string
               <Button variant="primary" href={`${base}/new`}>
                 New issue
               </Button>
+              <Button
+                className="px-2"
+                aria-label="Copy issue link"
+                title={linkCopied ? "Copied!" : "Copy issue link"}
+                onClick={() =>
+                  navigator.clipboard?.writeText(`${window.location.origin}${base}/${issue.number}`).then(() => {
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                  })
+                }
+              >
+                {linkCopied ? <CheckIcon size={16} className="text-fg-success" /> : <CopyIcon size={16} />}
+              </Button>
             </div>
           </div>
         )}
@@ -378,6 +426,13 @@ export function IssuePage({ owner, repo, number }: { owner: string; repo: string
                   onSave={(body) => api(`${repoPath}/issues/comments/${item.id}`, { method: "PATCH", body: { body } }).then(() => void refresh())}
                   onDelete={item.viewer_can_delete ? () => api(`${repoPath}/issues/comments/${item.id}`, { method: "DELETE" }).then(() => void refresh()) : undefined}
                   onQuote={issue.viewer_can_comment ? (text) => editor.current?.insert(quote(text)) : undefined}
+                  minimized={item.minimized}
+                  onHide={
+                    item.viewer_can_minimize
+                      ? (reason) =>
+                          api(`${repoPath}/issues/comments/${item.id}/minimize`, reason ? { method: "PUT", body: { reason } } : { method: "DELETE" }).then(() => void refresh())
+                      : undefined
+                  }
                   footer={<Reactions groups={item.reactions} path={`${repoPath}/issues/comments/${item.id}/reactions`} canReact={issue.viewer_can_comment} onChange={() => void timeline.mutate()} />}
                 />
               ) : (
@@ -548,6 +603,12 @@ export function IssuePage({ owner, repo, number }: { owner: string; repo: string
                     </li>
                   </>
                 )}
+                <li>
+                  <button type="button" className={sideAction} onClick={() => navigate(`${base}/new?clone=${issue.number}`)}>
+                    <CopyIcon size={16} className="text-fg-muted" />
+                    Clone issue
+                  </button>
+                </li>
                 {isAdmin && (
                   <li>
                     <button

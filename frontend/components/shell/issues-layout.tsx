@@ -1,16 +1,18 @@
 "use client";
 
-import { IssueOpenedIcon, MilestoneIcon, PersonIcon, SmileyIcon, TableIcon, TagIcon } from "@primer/octicons-react";
+import { BookmarkIcon, ClockIcon, IssueOpenedIcon, MentionIcon, MilestoneIcon, PersonIcon, SmileyIcon, TableIcon, TagIcon } from "@primer/octicons-react";
 import type { ReactNode } from "react";
 import { DEFAULT_QUERY, searchHref, setToken } from "@/lib/query";
 import { Link } from "@/lib/router";
 import { useSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-export type IssuesSection = "issues" | "assigned" | "created" | "projects" | "milestones" | "labels";
+export type IssuesSection = "issues" | "assigned" | "created" | "mentioned" | "recent" | "views" | "projects" | "milestones" | "labels";
 
 export const assignedQuery = setToken(DEFAULT_QUERY, "assignee", "@me");
 export const createdQuery = setToken(DEFAULT_QUERY, "author", "@me");
+export const mentionedQuery = setToken(DEFAULT_QUERY, "mentions", "@me");
+export const recentQuery = "is:issue involves:@me sort:updated-desc";
 
 /** The 256px navigation on the left of every issues page (issues, projects, milestones, labels). */
 export function IssuesNav({ owner, repo, active }: { owner: string; repo: string; active: IssuesSection }) {
@@ -39,8 +41,11 @@ export function IssuesNav({ owner, repo, active }: { owner: string; repo: string
           {item("issues", `${base}/issues`, <IssueOpenedIcon size={16} />, "Issues")}
           {user && item("assigned", searchHref(`${base}/issues`, assignedQuery), <PersonIcon size={16} />, "Assigned to me")}
           {user && item("created", searchHref(`${base}/issues`, createdQuery), <SmileyIcon size={16} />, "Created by me")}
+          {user && item("mentioned", searchHref(`${base}/issues`, mentionedQuery), <MentionIcon size={16} />, "Mentioned")}
+          {user && item("recent", searchHref(`${base}/issues`, recentQuery), <ClockIcon size={16} />, "Recent activity")}
         </ul>
         <ul className="mx-2 border-t border-line-muted py-2">
+          {item("views", `${base}/issues/views`, <BookmarkIcon size={16} />, "Views")}
           {item("projects", `${base}/projects`, <TableIcon size={16} />, "Projects")}
           {item("milestones", `${base}/milestones`, <MilestoneIcon size={16} />, "Milestones")}
           {item("labels", `${base}/labels`, <TagIcon size={16} />, "Labels")}
@@ -84,6 +89,7 @@ export function IssuesLayout({
         {/* Below lg the sidebar is hidden, so the sibling pages are linked here. */}
         <p className="mt-2 flex gap-4 text-sm lg:hidden">
           {small("issues", `${base}/issues`, "Issues")}
+          {small("views", `${base}/issues/views`, "Views")}
           {small("projects", `${base}/projects`, "Projects")}
           {small("milestones", `${base}/milestones`, "Milestones")}
           {small("labels", `${base}/labels`, "Labels")}

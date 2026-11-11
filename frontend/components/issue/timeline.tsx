@@ -22,21 +22,24 @@ import {
   TriangleDownIcon,
   UnlockIcon,
   CopyIcon,
+  FoldIcon,
+  UnfoldIcon,
+  IssueOpenedIcon,
   QuoteIcon,
 } from "@primer/octicons-react";
 import { type ReactNode, useState } from "react";
 import useSWR from "swr";
 import { MarkdownEditor } from "@/components/markdown/editor";
-import { MarkdownBody } from "@/components/markdown/markdown-body";
+import { MarkdownBody, toggleTask } from "@/components/markdown/markdown-body";
 import { ActionDivider, ActionItem, ActionMenu } from "@/components/ui/action-menu";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Flash } from "@/components/ui/form";
+import { Flash, inputClass } from "@/components/ui/form";
 import { IssueLabel } from "@/components/ui/issue-label";
 import { IssueStateIcon, RelativeTime } from "@/components/ui/misc";
-import { api, asApiError, type Association, type Edit, type TimelineEvent } from "@/lib/api";
-import { Link } from "@/lib/router";
+import { api, asApiError, HIDE_REASONS, type Association, type Edit, type TimelineEvent } from "@/lib/api";
+import { Link, navigate } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 function UserLink({ login, className }: { login: string; className?: string }) {
@@ -113,6 +116,10 @@ export type CommentBoxProps = {
   onSave: (body: string) => Promise<void>;
   onDelete?: () => Promise<void>;
   onQuote?: (body: string) => void;
+  /** The reason this comment is hidden, if it is. */
+  minimized?: string | null;
+  /** Hides the comment for a reason, or shows it again with `null`. Absent when the viewer may not. */
+  onHide?: (reason: string | null) => Promise<void>;
   /** Rendered under the body: reactions. */
   footer?: ReactNode;
 };
@@ -124,6 +131,11 @@ export function CommentBox(p: CommentBoxProps) {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hiding, setHiding] = useState(false);
+  const [reason, setReason] = useState<string>(HIDE_REASONS[0]);
+  // A hidden comment stays folded until someone asks to see it.
+  const [unfolded, setUnfolded] = useState(false);
+  const folded = !!p.minimized && !unfolded;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -132,6 +144,7 @@ export function CommentBox(p: CommentBoxProps) {
       await action();
       setEditing(false);
       setConfirmDelete(false);
+      setHiding(false);
     } catch (err) {
       setError(asApiError(err).summary);
     } finally {
@@ -172,7 +185,14 @@ export function CommentBox(p: CommentBoxProps) {
                 <a href={`#${p.anchor}`} className="hover:text-fg-accent hover:underline">
                   <RelativeTime iso={p.createdAt} />
                 </a>
+                {p.minimized && <span className="italic"> · This comment has been hidden as {p.minimized}.</span>}
               </span>
+              {p.minimized && (
+                <button type="button" aria-expanded={!folded} onClick={() => setUnfolded(folded)} className="flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 text-xs hover:bg-control-transparent-hover">
+                  {folded ? <UnfoldIcon size={16} /> : <FoldIcon size={16} />}
+                  {folded ? "Show comment" : "Hide comment"}
+                </button>
+              )}
               {p.editCount > 0 && <EditHistory path={p.editsPath} count={p.editCount} />}
               {p.association === "owner" && <Badge title="This user is the owner of this repository.">Owner</Badge>}
               {p.association === "collaborator" && <Badge title="This user has been invited to collaborate on this repository.">Collaborator</Badge>}
@@ -191,6 +211,34 @@ export function CommentBox(p: CommentBoxProps) {
                   <ActionItem leading={<QuoteIcon size={16} />} onSelect={() => p.onQuote?.(p.body)}>
                     Quote reply
                   </ActionItem>
+                )}
+                {p.onQuote && p.verb === "commented" && (
+                  <ActionItem
+                    leading={<IssueOpenedIcon size={16} />}
+                    onSelect={() => {
+                      const link = `${window.location.origin}${window.location.pathname}#${p.anchor}`;
+                      const quoted = p.body.split("\n").map((l) => `> ${l}`).join("\n");
+                      const first = p.body.split("\n").find((l) => l.trim())?.trim().slice(0, 120) ?? "";
+                      const params = new URLSearchParams({ title: first, body: `${quoted}\n\n_Originally posted by @${p.author} in ${link}_` });
+                      navigate(`/${p.repo}/issues/new?${params}`);
+                    }}
+                  >
+                    Reference in new issue
+                  </ActionItem>
+                )}
+                {p.onHide && (
+                  <>
+                    <ActionDivider />
+                    {p.minimized ? (
+                      <ActionItem leading={<UnfoldIcon size={16} />} onSelect={() => run(() => p.onHide!(null))}>
+                        Unhide
+                      </ActionItem>
+                    ) : (
+                      <ActionItem leading={<FoldIcon size={16} />} onSelect={() => setHiding(true)}>
+                        Hide
+                      </ActionItem>
+                    )}
+                  </>
                 )}
                 {p.canEdit && (
                   <>
@@ -213,14 +261,40 @@ export function CommentBox(p: CommentBoxProps) {
                 )}
               </ActionMenu>
             </header>
-            <div className="p-4">
-              <MarkdownBody html={p.bodyHtml} />
+            <div className={cn("p-4", folded && "hidden")}>
+              <MarkdownBody html={p.bodyHtml} onToggleTask={p.canEdit ? (index, checked) => run(() => p.onSave(toggleTask(p.body, index, checked))) : undefined} />
               {p.footer}
             </div>
           </article>
         )}
         {copied && <p className="mt-1 text-xs text-fg-muted">Link copied.</p>}
       </div>
+      <Dialog
+        open={hiding}
+        onClose={() => setHiding(false)}
+        title="Hide comment"
+        footer={
+          <>
+            <Button onClick={() => setHiding(false)}>Cancel</Button>
+            <Button variant="primary" disabled={busy} onClick={() => p.onHide && run(() => p.onHide!(reason))}>
+              Hide comment
+            </Button>
+          </>
+        }
+      >
+        {error && <Flash className="mb-3">{error}</Flash>}
+        <label htmlFor={`hide-reason-${p.anchor}`} className="mb-1 block text-sm font-semibold">
+          Choose a reason for hiding this comment
+        </label>
+        <select id={`hide-reason-${p.anchor}`} className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)}>
+          {HIDE_REASONS.map((r) => (
+            <option key={r} value={r}>
+              {r[0].toUpperCase() + r.slice(1)}
+            </option>
+          ))}
+        </select>
+        <p className="mt-2 text-xs text-fg-muted">The comment stays in the conversation, folded, and anyone can unfold it.</p>
+      </Dialog>
       <Dialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}

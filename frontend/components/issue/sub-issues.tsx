@@ -253,7 +253,11 @@ export function SubIssues({ repo, issue, onAdd, onRemove }: { repo: string; issu
         </div>
       )}
       {canEdit && (
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link href={`/${repo}/issues/new?parent=${issue.number}`} className={buttonClass("default", "sm")}>
+            <IssueTracksIcon size={16} />
+            Create sub-issue
+          </Link>
           <SelectPanel
             align="start"
             title="Add existing issue as sub-issue"
@@ -262,8 +266,7 @@ export function SubIssues({ repo, issue, onAdd, onRemove }: { repo: string; issu
             empty="No open issues to add"
             trigger={
               <button type="button" className={buttonClass("default", "sm")}>
-                <IssueTracksIcon size={16} />
-                Add sub-issue
+                Add existing issue
               </button>
             }
             items={items}

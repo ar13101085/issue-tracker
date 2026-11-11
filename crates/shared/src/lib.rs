@@ -261,6 +261,48 @@ pub struct Comment {
     pub reactions: Vec<ReactionGroup>,
     pub viewer_can_edit: bool,
     pub viewer_can_delete: bool,
+    /// Why the comment is hidden (one of [`HIDE_REASONS`]); `None` when it is shown.
+    #[serde(default)]
+    pub minimized: Option<String>,
+    /// Triage and up may hide and unhide comments.
+    #[serde(default)]
+    pub viewer_can_minimize: bool,
+}
+
+/// A saved search of a repository's issues.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedView {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub query: String,
+    /// Shared views are visible to everyone who can see the repository; private ones only to their owner.
+    pub shared: bool,
+    pub viewer_can_edit: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SaveView {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub query: String,
+    #[serde(default)]
+    pub shared: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateView {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub query: Option<String>,
+    pub shared: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HideRequest {
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -470,6 +512,7 @@ pub struct BulkUpdate {
     pub milestone: Option<Option<i64>>,
 }
 
+pub const HIDE_REASONS: &[&str] = &["abuse", "spam", "off-topic", "outdated", "duplicate", "resolved"];
 pub const LOCK_REASONS: &[&str] = &["off-topic", "too heated", "resolved", "spam"];
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
