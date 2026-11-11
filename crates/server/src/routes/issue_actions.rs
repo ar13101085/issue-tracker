@@ -1,4 +1,4 @@
-//! Lock, pin, sub-issues, transfer, bulk edits and reactions.
+//! Lock, pin, sub-issues, blocking, transfer, bulk edits and reactions.
 
 use crate::access::{load_repo, RepoAccess};
 use crate::auth::Viewer;
@@ -14,6 +14,7 @@ use shared::{BulkUpdate, EventKind, IssueLocation, LockRequest, Role, SubIssueRe
 
 const MAX_PINNED: u64 = 3;
 const MAX_SUB_ISSUES: u64 = 100;
+const MAX_BLOCKERS: usize = 50;
 const MAX_BULK: usize = 100;
 
 async fn event(state: &AppState, issue: &IssueDoc, actor: &UserDoc, kind: EventKind, edit: impl FnOnce(&mut EventDoc)) -> Result<(), ApiError> {
@@ -155,6 +156,65 @@ pub async fn remove_sub_issue(state: web::Data<AppState>, viewer: Viewer, path: 
     respond(&state, &access, number).await
 }
 
+/// `POST /issues/{number}/dependencies/blocked_by`: `number` waits on the issue in the body.
+pub async fn add_blocked_by(state: web::Data<AppState>, viewer: Viewer, path: IssuePath, body: web::Json<SubIssueRequest>) -> Result<HttpResponse, ApiError> {
+    let (owner, name, number) = path.into_inner();
+    let access = load_repo(&state, &owner, &name, viewer.0).await?;
+    let user = access.require(Role::Triage)?;
+    let issue = find_issue(&state, &access, number).await?;
+    let fail = |m: &str| ApiError::field("number", m);
+    let blocker = match find_issue(&state, &access, body.number).await {
+        Ok(b) => b,
+        Err(ApiError::NotFound) => return Err(fail("That issue does not exist in this repository")),
+        Err(e) => return Err(e),
+    };
+    if blocker.id == issue.id {
+        return Err(fail("An issue cannot block itself"));
+    }
+    if issue.blocked_by_ids.contains(&blocker.id) {
+        return Err(fail("That issue already blocks this one"));
+    }
+    if issue.blocked_by_ids.len() >= MAX_BLOCKERS {
+        return Err(fail("An issue can be blocked by at most 50 issues"));
+    }
+    // Everything the blocker waits on, directly or not, must not include this issue.
+    let mut pending = blocker.blocked_by_ids.clone();
+    let mut seen: std::collections::HashSet<ObjectId> = std::collections::HashSet::new();
+    while let Some(id) = pending.pop() {
+        if id == issue.id {
+            return Err(fail("Those two issues would block each other"));
+        }
+        if !seen.insert(id) || seen.len() > 500 {
+            continue;
+        }
+        if let Some(next) = state.db.issues.find_one(doc! {"_id": id}).await? {
+            pending.extend(next.blocked_by_ids);
+        }
+    }
+    state.db.issues.update_one(doc! {"_id": issue.id}, doc! {"$addToSet": {"blocked_by_ids": blocker.id}}).await?;
+    event(&state, &issue, user, EventKind::BlockedByAdded, |e| e.source_issue_id = Some(blocker.id)).await?;
+    event(&state, &blocker, user, EventKind::BlockingAdded, |e| e.source_issue_id = Some(issue.id)).await?;
+    signal_issue(&state, access.repo.id, blocker.number);
+    respond(&state, &access, number).await
+}
+
+/// `DELETE /issues/{number}/dependencies/blocked_by/{blocker}`
+pub async fn remove_blocked_by(state: web::Data<AppState>, viewer: Viewer, path: web::Path<(String, String, i64, i64)>) -> Result<HttpResponse, ApiError> {
+    let (owner, name, number, blocker_number) = path.into_inner();
+    let access = load_repo(&state, &owner, &name, viewer.0).await?;
+    let user = access.require(Role::Triage)?;
+    let issue = find_issue(&state, &access, number).await?;
+    let blocker = find_issue(&state, &access, blocker_number).await?;
+    if !issue.blocked_by_ids.contains(&blocker.id) {
+        return Err(ApiError::NotFound);
+    }
+    state.db.issues.update_one(doc! {"_id": issue.id}, doc! {"$pull": {"blocked_by_ids": blocker.id}}).await?;
+    event(&state, &issue, user, EventKind::BlockedByRemoved, |e| e.source_issue_id = Some(blocker.id)).await?;
+    event(&state, &blocker, user, EventKind::BlockingRemoved, |e| e.source_issue_id = Some(issue.id)).await?;
+    signal_issue(&state, access.repo.id, blocker.number);
+    respond(&state, &access, number).await
+}
+
 /// Moves an issue, with its comments and history, to another repository.
 pub async fn transfer(state: web::Data<AppState>, viewer: Viewer, path: IssuePath, body: web::Json<TransferRequest>) -> Result<HttpResponse, ApiError> {
     let (owner, name, number) = path.into_inner();
@@ -185,6 +245,8 @@ pub async fn transfer(state: web::Data<AppState>, viewer: Viewer, path: IssuePat
     }
     let new_number = next_number(&state, target.repo.id).await?;
     state.db.issues.update_many(doc! {"parent_id": issue.id}, doc! {"$set": {"parent_id": Bson::Null}}).await?;
+    // Relationships stay inside one repository.
+    state.db.issues.update_many(doc! {"blocked_by_ids": issue.id}, doc! {"$pull": {"blocked_by_ids": issue.id}}).await?;
     state
         .db
         .issues
@@ -192,7 +254,7 @@ pub async fn transfer(state: web::Data<AppState>, viewer: Viewer, path: IssuePat
             doc! {"_id": issue.id},
             doc! {"$set": {
                 "repo_id": target.repo.id, "number": new_number, "label_ids": label_ids,
-                "milestone_id": Bson::Null, "parent_id": Bson::Null, "pinned": false, "updated_at": DateTime::now(),
+                "milestone_id": Bson::Null, "parent_id": Bson::Null, "blocked_by_ids": [], "pinned": false, "updated_at": DateTime::now(),
             }},
         )
         .await?;

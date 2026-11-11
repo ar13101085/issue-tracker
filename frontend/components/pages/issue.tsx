@@ -17,7 +17,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { TypeBadge } from "@/components/issue/pickers";
 import { Reactions } from "@/components/issue/reactions";
 import { type Metadata, MetadataSections, ParticipantsSection, ProjectsSection, SidebarSection, SubscribeSection } from "@/components/issue/sidebar";
-import { SubIssues } from "@/components/issue/sub-issues";
+import { RelationshipsSection, SubIssues } from "@/components/issue/sub-issues";
 import { CommentBox, EventRow } from "@/components/issue/timeline";
 import { type EditorHandle, MarkdownEditor } from "@/components/markdown/editor";
 import { quote } from "@/components/markdown/textarea-tools";
@@ -27,7 +27,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button, buttonClass } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Flash, inputClass, TextInput } from "@/components/ui/form";
-import { IssueStateIcon, StateLabel, useTitle } from "@/components/ui/misc";
+import { StateLabel, useTitle } from "@/components/ui/misc";
 import { api, ApiError, asApiError, type Comment, hasRole, type Issue, LOCK_REASONS, type Milestone, type StateReason, type Template, type TimelineItem } from "@/lib/api";
 import { Link, Redirect, navigate } from "@/lib/router";
 import { useRepo, useSession } from "@/lib/session";
@@ -462,21 +462,25 @@ export function IssuePage({ owner, repo, number }: { owner: string; repo: string
             onChange={(change) => patchIssue(metadataBody(change, milestones.data))}
             beforeMilestone={<ProjectsSection repo={full} number={issue.number} canEdit={issue.viewer_can_triage} />}
           />
-          <SidebarSection title="Relationships">
-            {issue.parent ? (
-              <Link href={`${base}/${issue.parent.number}`} className="flex items-start gap-2 text-sm hover:text-fg-accent">
-                <span className="flex h-5 items-center">
-                  <IssueStateIcon issue={issue.parent} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-xs text-fg-muted">Parent issue</span>
-                  <span className="font-semibold break-words">{issue.parent.title}</span> <span className="text-fg-muted">#{issue.parent.number}</span>
-                </span>
-              </Link>
-            ) : (
-              <p className="text-fg-muted">None yet</p>
-            )}
-          </SidebarSection>
+          <RelationshipsSection
+            repo={full}
+            issue={issue}
+            onSetParent={(parent) =>
+              quiet(async () => {
+                // An issue has one parent, so the old link goes before the new one is made.
+                if (issue.parent) await api(`${repoPath}/issues/${issue.parent.number}/sub_issues/${issue.number}`, { method: "DELETE" });
+                if (parent !== null) await api(`${repoPath}/issues/${parent}/sub_issues`, { method: "POST", body: { number: issue.number } });
+              })
+            }
+            onBlockedBy={(other, on) =>
+              quiet(() => (on ? api(`${key}/dependencies/blocked_by`, { method: "POST", body: { number: other } }) : api(`${key}/dependencies/blocked_by/${other}`, { method: "DELETE" })))
+            }
+            onBlocking={(other, on) => {
+              // "This blocks #other" is stored on the other issue as "blocked by this".
+              const theirs = `${repoPath}/issues/${other}/dependencies/blocked_by`;
+              return quiet(() => (on ? api(theirs, { method: "POST", body: { number: issue.number } }) : api(`${theirs}/${issue.number}`, { method: "DELETE" })));
+            }}
+          />
           {user && (
             <SubscribeSection
               subscribed={issue.viewer_subscribed}

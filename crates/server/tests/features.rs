@@ -246,6 +246,31 @@ async fn lock_pin_sub_issues_bulk_and_reactions() {
     let removed = send(&app, DELETE, &format!("{issues}/1/sub_issues/2"), Some(&bob), None).await;
     assert_eq!(removed.json["sub_issues"].as_array().unwrap().len(), 0);
     assert_eq!(send(&app, DELETE, &format!("{issues}/1/sub_issues/2"), Some(&bob), None).await.status, StatusCode::NOT_FOUND);
+
+    // Blocking: #3 waits on #4, #4 waits on #1; nothing may wait on itself, twice, or in a circle.
+    let block = |issue: i64, by: i64, who: &'static str| {
+        let path = format!("{issues}/{issue}/dependencies/blocked_by");
+        let app = &app;
+        async move { send(app, POST, &path, Some(who), Some(json!({"number": by}))).await }
+    };
+    assert_eq!(block(3, 4, carol_s).await.status, StatusCode::FORBIDDEN);
+    let blocked = block(3, 4, bob_s).await;
+    assert_eq!(blocked.status, StatusCode::OK, "{}", blocked.json);
+    assert_eq!(blocked.json["blocked_by"][0]["number"], 4);
+    assert_eq!(block(4, 1, bob_s).await.status, StatusCode::OK);
+    assert_eq!(block(3, 3, bob_s).await.status, StatusCode::UNPROCESSABLE_ENTITY, "itself");
+    assert_eq!(block(3, 4, bob_s).await.status, StatusCode::UNPROCESSABLE_ENTITY, "twice");
+    assert_eq!(block(4, 3, bob_s).await.status, StatusCode::UNPROCESSABLE_ENTITY, "each other");
+    assert_eq!(block(1, 3, bob_s).await.status, StatusCode::UNPROCESSABLE_ENTITY, "circle");
+    assert_eq!(block(3, 99, bob_s).await.status, StatusCode::UNPROCESSABLE_ENTITY, "missing");
+    let middle = send(&app, GET, &format!("{issues}/4"), None, None).await;
+    assert_eq!(middle.json["blocked_by"][0]["number"], 1);
+    assert_eq!(middle.json["blocking"][0]["number"], 3);
+    assert_eq!(kinds(&send(&app, GET, &format!("{issues}/4/timeline"), None, None).await.json), ["blocking_added", "blocked_by_added"]);
+    let unblocked = send(&app, DELETE, &format!("{issues}/3/dependencies/blocked_by/4"), Some(&bob), None).await;
+    assert_eq!(unblocked.json["blocked_by"].as_array().unwrap().len(), 0);
+    assert_eq!(send(&app, DELETE, &format!("{issues}/3/dependencies/blocked_by/4"), Some(&bob), None).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(send(&app, GET, &format!("{issues}/4"), None, None).await.json["blocking"].as_array().unwrap().len(), 0);
     assert_eq!(kinds(&send(&app, GET, &format!("{issues}/2/timeline"), None, None).await.json), ["pinned", "unpinned", "parent_added", "sub_issue_added", "parent_removed"]);
 
     // Bulk edits behave like the single edit, once per issue.

@@ -101,6 +101,10 @@ pub struct IssueCtx {
     users: HashMap<ObjectId, String>,
     parents: HashMap<ObjectId, IssueRef>,
     children: HashMap<ObjectId, Vec<IssueRef>>,
+    /// Every issue named in a `blocked_by_ids` of the loaded issues.
+    blockers: HashMap<ObjectId, IssueRef>,
+    /// For each loaded issue, the issues it blocks.
+    blocking: HashMap<ObjectId, Vec<IssueRef>>,
     reactions: HashMap<ObjectId, Vec<ReactionDoc>>,
     subscribed: HashSet<ObjectId>,
 }
@@ -139,6 +143,22 @@ impl IssueCtx {
                 }
             }
         }
+        let blocker_ids: Vec<ObjectId> = issues.iter().flat_map(|i| i.blocked_by_ids.iter().copied()).collect();
+        let mut blockers = HashMap::new();
+        if !blocker_ids.is_empty() {
+            let docs: Vec<IssueDoc> = state.db.issues.find(doc! {"_id": {"$in": blocker_ids}}).await?.try_collect().await?;
+            blockers = docs.iter().map(|i| (i.id, issue_ref(i))).collect();
+        }
+        let mut blocking: HashMap<ObjectId, Vec<IssueRef>> = HashMap::new();
+        if !ids.is_empty() {
+            let docs: Vec<IssueDoc> =
+                state.db.issues.find(doc! {"blocked_by_ids": {"$in": ids.clone()}}).sort(doc! {"number": 1}).await?.try_collect().await?;
+            for waiting in docs {
+                for id in &waiting.blocked_by_ids {
+                    blocking.entry(*id).or_default().push(issue_ref(&waiting));
+                }
+            }
+        }
         let reactions = if with_reactions { load_reactions(state, ids.clone()).await? } else { HashMap::new() };
         let mut subscribed = HashSet::new();
         if let (true, Some(viewer)) = (detail, &access.viewer) {
@@ -159,6 +179,8 @@ impl IssueCtx {
             users,
             parents,
             children,
+            blockers,
+            blocking,
             reactions,
         })
     }
@@ -205,6 +227,8 @@ pub fn issue_dto(doc: IssueDoc, access: &RepoAccess, ctx: &IssueCtx) -> Issue {
         pinned: doc.pinned,
         parent: doc.parent_id.and_then(|id| ctx.parents.get(&id).cloned()),
         sub_issues: ctx.children.get(&doc.id).cloned().unwrap_or_default(),
+        blocked_by: doc.blocked_by_ids.iter().filter_map(|id| ctx.blockers.get(id).cloned()).collect(),
+        blocking: ctx.blocking.get(&doc.id).cloned().unwrap_or_default(),
         reactions: reaction_groups(ctx.reactions.get(&doc.id), access.viewer.as_ref()),
         viewer_can_edit: is_author || access.has(Role::Write),
         viewer_can_close: is_author || access.has(Role::Triage),
@@ -564,6 +588,7 @@ pub async fn create(
         lock_reason: None,
         pinned: false,
         parent_id: None,
+        blocked_by_ids: Vec::new(),
     };
     state.db.issues.insert_one(&issue).await?;
     record_references(&state, &issue, user, &rendered.issue_refs).await?;
@@ -794,6 +819,7 @@ pub async fn purge(state: &AppState, issue: &IssueDoc) -> Result<(), ApiError> {
     state.db.project_items.delete_many(doc! {"issue_id": issue.id}).await?;
     state.db.events.delete_many(doc! {"$or": [{"issue_id": issue.id}, {"source_issue_id": issue.id}]}).await?;
     state.db.issues.update_many(doc! {"parent_id": issue.id}, doc! {"$set": {"parent_id": Bson::Null}}).await?;
+    state.db.issues.update_many(doc! {"blocked_by_ids": issue.id}, doc! {"$pull": {"blocked_by_ids": issue.id}}).await?;
     crate::notify::issue_deleted(state, issue).await;
     state.db.issues.delete_one(doc! {"_id": issue.id}).await?;
     Ok(())

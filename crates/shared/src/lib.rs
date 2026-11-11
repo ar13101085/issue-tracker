@@ -173,6 +173,12 @@ pub struct Issue {
     pub pinned: bool,
     pub parent: Option<IssueRef>,
     pub sub_issues: Vec<IssueRef>,
+    /// Issues that must be finished before this one can be.
+    #[serde(default)]
+    pub blocked_by: Vec<IssueRef>,
+    /// Issues waiting on this one.
+    #[serde(default)]
+    pub blocking: Vec<IssueRef>,
     pub reactions: Vec<ReactionGroup>,
     pub viewer_can_edit: bool,
     pub viewer_can_close: bool,
@@ -290,6 +296,10 @@ pub enum EventKind {
     SubIssueRemoved,
     ParentAdded,
     ParentRemoved,
+    BlockedByAdded,
+    BlockedByRemoved,
+    BlockingAdded,
+    BlockingRemoved,
     TypeChanged,
 }
 

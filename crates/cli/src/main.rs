@@ -219,6 +219,20 @@ pub enum IssueCmd {
     Pin { number: i64 },
     /// Unpin an issue
     Unpin { number: i64 },
+    /// Mark an issue as blocked by another issue
+    Block {
+        number: i64,
+        /// The issue that has to be finished first
+        #[arg(long)]
+        by: i64,
+    },
+    /// Remove a "blocked by" relationship
+    Unblock {
+        number: i64,
+        /// The issue that no longer blocks it
+        #[arg(long)]
+        by: i64,
+    },
     /// Lock the conversation
     Lock {
         number: i64,

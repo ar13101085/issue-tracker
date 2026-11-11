@@ -381,6 +381,8 @@ async fn issue(ctx: &Ctx, command: IssueCmd) -> Result<(), String> {
             line("Type", i.issue_type.clone().unwrap_or_default());
             line("Parent", i.parent.as_ref().map(|p| format!("#{} {}", p.number, p.title)).unwrap_or_default());
             line("Sub-issues", i.sub_issues.iter().map(|s| format!("#{}", s.number)).collect::<Vec<_>>().join(", "));
+            line("Blocked by", i.blocked_by.iter().map(|s| format!("#{}", s.number)).collect::<Vec<_>>().join(", "));
+            line("Blocking", i.blocking.iter().map(|s| format!("#{}", s.number)).collect::<Vec<_>>().join(", "));
             if i.locked {
                 println!("{}", dim("This conversation is locked."));
             }
@@ -509,6 +511,16 @@ async fn issue(ctx: &Ctx, command: IssueCmd) -> Result<(), String> {
         IssueCmd::Pin { number } => {
             client.run(Method::PUT, &format!("{base}/{number}/pin"), None).await?;
             println!("{} Pinned issue #{number}", green("✓"));
+            Ok(())
+        }
+        IssueCmd::Block { number, by } => {
+            client.run(Method::POST, &format!("{base}/{number}/dependencies/blocked_by"), Some(json!({"number": by}))).await?;
+            println!("{} Issue #{number} is now blocked by #{by}", green("✓"));
+            Ok(())
+        }
+        IssueCmd::Unblock { number, by } => {
+            client.run(Method::DELETE, &format!("{base}/{number}/dependencies/blocked_by/{by}"), None).await?;
+            println!("{} Issue #{number} is no longer blocked by #{by}", green("✓"));
             Ok(())
         }
         IssueCmd::Unpin { number } => {

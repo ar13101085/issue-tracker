@@ -86,6 +86,7 @@ pub async fn init(cfg: Config) -> Result<AppState, String> {
     db.milestones.create_index(unique(doc! {"repo_id": 1, "title_lower": 1})).await.map_err(err)?;
     db.reactions.create_index(unique(doc! {"subject_id": 1, "user_id": 1, "content": 1})).await.map_err(err)?;
     db.issues.create_index(plain(doc! {"parent_id": 1})).await.map_err(err)?;
+    db.issues.create_index(plain(doc! {"blocked_by_ids": 1})).await.map_err(err)?;
     db.subscriptions.create_index(unique(doc! {"issue_id": 1, "user_id": 1})).await.map_err(err)?;
     db.notifications.create_index(unique(doc! {"user_id": 1, "issue_id": 1})).await.map_err(err)?;
     db.notifications.create_index(plain(doc! {"user_id": 1, "done": 1, "updated_at": -1})).await.map_err(err)?;

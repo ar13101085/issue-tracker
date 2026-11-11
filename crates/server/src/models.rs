@@ -107,6 +107,9 @@ pub struct IssueDoc {
     /// Set on a sub-issue.
     #[serde(default)]
     pub parent_id: Option<ObjectId>,
+    /// Issues that block this one.
+    #[serde(default)]
+    pub blocked_by_ids: Vec<ObjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
