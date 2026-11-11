@@ -140,14 +140,14 @@ Phase 0 থেকে 8 সবগুলো তৈরি হয়েছে।
 | 5 | হয়েছে | SSE live update, subscription, notification inbox, email queue |
 | 6 | হয়েছে | Project: table view, board view (drag and drop), custom field |
 | 7 | হয়েছে | `it` CLI, personal access token |
-| 8 | আংশিক | Responsive ও dark mode যাচাই হয়েছে; issue list, issue detail, labels, milestones, projects list আর project table/board আসল GitHub-এর মাপ নিয়ে মেলানো; signed-in header, notifications, settings মেলানো হয়নি |
+| 8 | হয়েছে | Responsive ও dark mode যাচাই হয়েছে; সব page (header, issue list/detail, labels, milestones, projects, notifications, settings) আসল GitHub-এর মাপ নিয়ে মেলানো |
 
 ### যা এখনো বাকি বা ইচ্ছা করে বাদ
 
-- Issue list, issue detail, labels, milestones, projects list আর project-এর table ও board view-এর মাপ
-  (heading, row grid, font, padding, sidebar) আসল GitHub-এর public page থেকে নিয়ে বসানো হয়েছে, signed-out
-  অবস্থায় দেখা page থেকে। Signed-in header, notifications আর settings page GitHub-এ login ছাড়া দেখা যায় না,
-  তাই ওগুলো মাপ মিলিয়ে দেখা হয়নি; ওগুলো Primer token থেকে বানানো।
+- সব page-এর মাপ (heading, row grid, font, padding, sidebar) আসল GitHub থেকে 1280px চওড়ায় নিয়ে বসানো হয়েছে।
+  Header, notifications আর settings signed-in অবস্থায় মাপা; বাকিগুলো public page থেকে।
+- Notifications page-এ GitHub-এর search box, Group by, Saved আর custom filter নেই; settings-এর form-গুলোর
+  ভেতরের বিষয়বস্তু আমাদের নিজস্ব, শুধু frame (sidebar, heading, list) GitHub-এর মাপে।
 - Project page-এ GitHub-এর filter bar আর একাধিক saved view নেই; Table আর Board দুটো স্থির tab।
 - Static release binary (`dist/issue-tracker` 23 MB, `dist/it` 6 MB) একা চালিয়ে যাচাই হয়েছে।
 - Email পাঠানো আসল SMTP server দিয়ে পরীক্ষা হয়নি; test-এ শুধু queue পর্যন্ত যাচাই হয়েছে।

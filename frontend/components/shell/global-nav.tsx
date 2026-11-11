@@ -113,10 +113,10 @@ export function HeaderSearch({ repo, signedIn, iconClass }: { repo: string | nul
       <Base.Trigger aria-label="Search" className={cn(iconClass, "lg:hidden")}>
         <SearchIcon size={16} />
       </Base.Trigger>
-      <Base.Trigger className="hidden h-8 w-[350px] cursor-pointer items-center gap-2 rounded-md border border-line px-2 text-left text-sm text-fg-muted lg:flex">
+      <Base.Trigger className="hidden h-8 w-[197px] cursor-pointer items-center gap-2 rounded-md border border-line px-3 text-left text-sm text-fg-muted lg:flex">
         <SearchIcon size={16} />
         <span className="flex-1">
-          Type <kbd className="rounded-[3px] border border-line px-1 text-xs">/</kbd> to search
+          Type <kbd className="inline-grid h-4 w-4 place-items-center rounded-[3px] border border-[var(--fgColor-muted)] align-middle text-xs leading-none">/</kbd> to search
         </span>
       </Base.Trigger>
       <Base.Portal>

@@ -29,7 +29,7 @@ const iconButton =
 
 function Logo() {
   return (
-    <Link href="/" aria-label="Homepage" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fg text-canvas">
+    <Link href="/" aria-label="Homepage" className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fg text-canvas">
       <IssueOpenedIcon size={20} />
     </Link>
   );
@@ -37,7 +37,7 @@ function Logo() {
 
 function Crumb({ href, bold, children }: { href: string; bold?: boolean; children: ReactNode }) {
   return (
-    <Link href={href} className={cn("min-w-0 truncate rounded-md px-1.5 py-1 text-sm text-fg hover:bg-control-transparent-hover", bold && "font-semibold")}>
+    <Link href={href} className={cn("min-w-0 truncate rounded-md px-1.5 py-1 text-sm leading-6 text-fg hover:bg-control-transparent-hover", bold && "font-semibold")}>
       {children}
     </Link>
   );
@@ -88,7 +88,7 @@ export function AppHeader({ route }: { route: Route }) {
                 )}
               </>
             ) : (
-              title && <span className="px-1.5 py-1 text-sm font-semibold">{title}</span>
+              title && <span className="px-1.5 py-1 text-sm leading-6 font-semibold">{title}</span>
             )}
           </nav>
         </div>
@@ -98,7 +98,6 @@ export function AppHeader({ route }: { route: Route }) {
 
           {user && (
             <>
-              <span className="mx-1 hidden h-5 w-px bg-line md:block" />
               <ActionMenu
                 trigger={
                   <button
@@ -107,7 +106,7 @@ export function AppHeader({ route }: { route: Route }) {
                     className="hidden h-8 cursor-pointer items-center gap-1 rounded-md border border-line px-2 text-fg-muted hover:bg-control-transparent-hover md:inline-flex"
                   >
                     <PlusIcon size={16} />
-                    <TriangleDownIcon size={16} />
+                    <TriangleDownIcon size={16} className="-mr-1" />
                   </button>
                 }
               >
@@ -181,7 +180,7 @@ function RepoNav({ owner, repo, route, openIssues, admin }: { owner: string; rep
     ...(admin ? [{ label: "Settings", href: `${base}/settings`, icon: <GearIcon size={16} />, active: route.name === "settings" }] : []),
   ];
   return (
-    <nav aria-label="Repository" className="overflow-x-auto px-4 [scrollbar-width:none]">
+    <nav aria-label="Repository" className="-mt-3 overflow-x-auto px-4 [scrollbar-width:none]">
       <ul className="flex min-h-12 items-center gap-2">
         {tabs.map((t) => (
           <li key={t.label} className="relative flex h-12 items-center">
@@ -211,7 +210,7 @@ export function HeaderSkeleton() {
         <span className={iconButton}>
           <ThreeBarsIcon size={16} />
         </span>
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-fg text-canvas">
+        <span className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-fg text-canvas">
           <IssueOpenedIcon size={20} />
         </span>
       </div>

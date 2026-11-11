@@ -2,7 +2,7 @@
 
 import { BellIcon, DeviceDesktopIcon, KeyIcon, MoonIcon, PaintbrushIcon, PersonIcon, SunIcon } from "@primer/octicons-react";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { Container, NotFound } from "@/components/pages/repos";
+import { NotFound } from "@/components/pages/repos";
 import { TokensSettings } from "@/components/pages/tokens";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,9 @@ import { Link, Redirect } from "@/lib/router";
 import { useSession } from "@/lib/session";
 import { type ColorMode, setColorMode, useColorMode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { SettingsFrame, Subhead } from "@/components/shell/settings-frame";
+
+export { Subhead };
 
 export const SETTINGS_NAV: { section: string | undefined; label: string; icon: ReactNode }[] = [
   { section: undefined, label: "Public profile", icon: <PersonIcon size={16} /> },
@@ -21,37 +24,31 @@ export const SETTINGS_NAV: { section: string | undefined; label: string; icon: R
   { section: "tokens", label: "Access tokens", icon: <KeyIcon size={16} /> },
 ];
 
-export function SettingsLayout({ section, nav, children }: { section?: string; nav: typeof SETTINGS_NAV; children: ReactNode }) {
+export function SettingsLayout({ section, nav, user, children }: { section?: string; nav: typeof SETTINGS_NAV; user: CurrentUser; children: ReactNode }) {
   return (
-    <Container>
-      <div className="flex flex-col gap-6 md:flex-row">
-        <nav aria-label="Settings" className="flex shrink-0 gap-1 overflow-x-auto md:w-[256px] md:flex-col md:pl-2">
-          {nav.map((n) => {
-            const active = n.section === section;
-            return (
-              <Link
-                key={n.label}
-                href={n.section ? `/settings/${n.section}` : "/settings"}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "relative flex h-8 items-center gap-2 rounded-md px-2 text-sm whitespace-nowrap hover:bg-control-transparent-hover",
-                  active && "bg-control-transparent-hover font-semibold md:before:absolute md:before:-left-2 md:before:h-6 md:before:w-1 md:before:rounded-md md:before:bg-accent-emphasis",
-                )}
-              >
-                <span className="text-fg-muted">{n.icon}</span>
-                {n.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="min-w-0 flex-1">{children}</div>
-      </div>
-    </Container>
+    <SettingsFrame
+      nav={nav.map((n) => ({ href: n.section ? `/settings/${n.section}` : "/settings", active: n.section === section, icon: n.icon, label: n.label }))}
+      header={
+        <header className="mt-1 mb-6 flex items-center gap-4">
+          <Avatar login={user.login} size={48} />
+          <div className="min-w-0">
+            <h1 className="truncate text-xl leading-[25px] font-semibold">
+              {user.name ? (
+                <>
+                  {user.name} <span className="text-fg-muted">({user.login})</span>
+                </>
+              ) : (
+                user.login
+              )}
+            </h1>
+            <p className="text-sm text-fg-muted">Your personal account</p>
+          </div>
+        </header>
+      }
+    >
+      {children}
+    </SettingsFrame>
   );
-}
-
-export function Subhead({ children }: { children: ReactNode }) {
-  return <h2 className="mb-4 border-b border-line-muted pb-2 text-2xl font-normal">{children}</h2>;
 }
 
 function Profile({ user, onSaved }: { user: CurrentUser; onSaved: (u: CurrentUser) => void }) {
@@ -189,7 +186,7 @@ export function UserSettingsPage({ section, extraNav = [], extra }: { section?: 
   const nav = [...SETTINGS_NAV, ...extraNav];
   if (!nav.some((n) => n.section === section)) return <NotFound />;
   return (
-    <SettingsLayout section={section} nav={nav}>
+    <SettingsLayout section={section} nav={nav} user={user}>
       {section === undefined && <Profile user={user} onSaved={setUser} />}
       {section === "appearance" && <Appearance />}
       {section === "notifications" && <NotificationSettings user={user} onSaved={setUser} />}

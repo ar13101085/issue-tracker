@@ -3,7 +3,7 @@
 import { GearIcon, NoteIcon, PeopleIcon, PlusIcon, TrashIcon } from "@primer/octicons-react";
 import { type FormEvent, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { Container, NotFound, PageError } from "@/components/pages/repos";
+import { NotFound, PageError } from "@/components/pages/repos";
 import { Blankslate } from "@/components/shell/blankslate";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { api, ApiError, asApiError, type Collaborator, hasRole, ISSUE_TYPES, typ
 import { Link, navigate } from "@/lib/router";
 import { useRepo } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { SettingsFrame, Subhead } from "@/components/shell/settings-frame";
 
 const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: "read", label: "Read", hint: "Can view and open issues" },
@@ -28,37 +29,17 @@ export function SettingsPage({ owner, repo, section }: { owner: string; repo: st
   if (!data) return null;
   if (!hasRole(data, "admin") || (section && section !== "access" && section !== "templates")) return <NotFound />;
   const base = `/${owner}/${repo}/settings`;
-  const nav = (href: string, active: boolean, icon: React.ReactNode, label: string) => (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "relative flex h-8 items-center gap-2 rounded-md px-2 text-sm whitespace-nowrap hover:bg-control-transparent-hover",
-        active && "bg-control-transparent-hover font-semibold md:before:absolute md:before:-left-2 md:before:h-6 md:before:w-1 md:before:rounded-md md:before:bg-accent-emphasis",
-      )}
-    >
-      <span className="text-fg-muted">{icon}</span>
-      {label}
-    </Link>
-  );
   return (
-    <Container>
-      <div className="flex flex-col gap-6 md:flex-row">
-        <nav aria-label="Settings" className="flex shrink-0 gap-1 overflow-x-auto md:w-[256px] md:flex-col md:pl-2">
-          {nav(base, !section, <GearIcon size={16} />, "General")}
-          {nav(`${base}/access`, section === "access", <PeopleIcon size={16} />, "Collaborators")}
-          {nav(`${base}/templates`, section === "templates", <NoteIcon size={16} />, "Issue templates")}
-        </nav>
-        <div className="min-w-0 flex-1">
-          {section === "access" ? <Access repo={data} /> : section === "templates" ? <Templates repo={data} /> : <General repo={data} onChange={(r) => mutate(r, { revalidate: false })} />}
-        </div>
-      </div>
-    </Container>
+    <SettingsFrame
+      nav={[
+        { href: base, active: !section, icon: <GearIcon size={16} />, label: "General" },
+        { href: `${base}/access`, active: section === "access", icon: <PeopleIcon size={16} />, label: "Collaborators" },
+        { href: `${base}/templates`, active: section === "templates", icon: <NoteIcon size={16} />, label: "Issue templates" },
+      ]}
+    >
+      {section === "access" ? <Access repo={data} /> : section === "templates" ? <Templates repo={data} /> : <General repo={data} onChange={(r) => mutate(r, { revalidate: false })} />}
+    </SettingsFrame>
   );
-}
-
-function Subhead({ children, danger }: { children: React.ReactNode; danger?: boolean }) {
-  return <h2 className={cn("mb-4 border-b border-line-muted pb-2 text-2xl font-normal", danger && "border-0 pb-0 text-fg-danger")}>{children}</h2>;
 }
 
 function General({ repo, onChange }: { repo: Repo; onChange: (r: Repo) => void }) {
@@ -247,25 +228,28 @@ function Access({ repo }: { repo: Repo }) {
         </Button>
       </form>
       <div className="rounded-md border border-line">
-        <div className="rounded-t-md border-b border-line bg-canvas-muted px-4 py-3 text-sm font-semibold">
+        <div className="flex min-h-[50px] items-center rounded-t-md border-b border-line bg-canvas-muted px-4 py-2 text-sm font-medium">
           {data ? `${data.length} collaborator${data.length === 1 ? "" : "s"}` : "Collaborators"}
         </div>
         {data && data.length === 0 && <Blankslate icon={<PeopleIcon size={24} />} title="You haven't added any collaborators yet" />}
         <ul className="divide-y divide-line-muted">
           {data?.map((c) => (
-            <li key={c.login} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <li key={c.login} className="flex min-h-[72px] flex-wrap items-center gap-4 p-4">
               <Avatar login={c.login} size={32} />
-              <Link href={`/${c.login}`} className="min-w-0 flex-1 truncate font-semibold hover:text-fg-accent hover:underline">
-                {c.login}
-              </Link>
+              <div className="min-w-0 flex-1">
+                <Link href={`/${c.login}`} className="block truncate text-sm font-semibold text-fg-accent hover:underline">
+                  {c.login}
+                </Link>
+                <span className="block text-xs leading-[18px] text-fg-muted">Collaborator</span>
+              </div>
               <RoleSelect
                 label={`Role of ${c.login}`}
                 disabled={busy}
                 value={c.role}
                 onChange={(r) => run(() => api(`${path}/${encodeURIComponent(c.login)}`, { method: "PUT", body: { role: r } }))}
               />
-              <Button variant="danger" disabled={busy} aria-label={`Remove ${c.login}`} onClick={() => run(() => api(`${path}/${encodeURIComponent(c.login)}`, { method: "DELETE" }))}>
-                Remove
+              <Button variant="danger" className="px-2" disabled={busy} aria-label={`Remove ${c.login}`} title="Remove" onClick={() => run(() => api(`${path}/${encodeURIComponent(c.login)}`, { method: "DELETE" }))}>
+                <TrashIcon size={16} />
               </Button>
             </li>
           ))}
