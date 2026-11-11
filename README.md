@@ -117,3 +117,7 @@ MongoDB runs out of file handles when the tests run twice in a row.
 
 Organizations, avatar uploads, password reset by email and keyboard shortcuts.
 [`PLAN.md`](PLAN.md) keeps the full list and the project's history (in Bangla).
+
+## License
+
+[MIT](LICENSE).
