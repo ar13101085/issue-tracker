@@ -1,10 +1,11 @@
 "use client";
 
-import { CalendarIcon, CheckIcon, ClockIcon, MilestoneIcon } from "@primer/octicons-react";
+import { AlertFillIcon, MilestoneIcon } from "@primer/octicons-react";
 import { type FormEvent, useState } from "react";
 import useSWR from "swr";
 import { Container, PageError } from "@/components/pages/repos";
 import { Blankslate } from "@/components/shell/blankslate";
+import { IssuesLayout, ListBox, ListTabs } from "@/components/shell/issues-layout";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Flash, Textarea, TextInput } from "@/components/ui/form";
@@ -21,20 +22,37 @@ function dueText(m: Milestone): { text: string; late: boolean } {
   const due = new Date(m.due_on);
   const late = due.getTime() < Date.now();
   const date = due.toLocaleDateString("en-US", { dateStyle: "long" });
-  return { text: late ? `Past due by ${Math.max(1, Math.round((Date.now() - due.getTime()) / 86_400_000))} days` : `Due by ${date}`, late };
+  return { text: late ? `Overdue by ${Math.max(1, Math.round((Date.now() - due.getTime()) / 86_400_000))} day(s)` : `Due by ${date}`, late };
 }
 
-export function Progress({ open, closed, className }: { open: number; closed: number; className?: string }) {
+export function Progress({ open, closed, className, openHref, closedHref }: { open: number; closed: number; className?: string; openHref?: string; closedHref?: string }) {
   const total = open + closed;
   const percent = total === 0 ? 0 : Math.round((closed / total) * 100);
+  const count = (n: number, word: string, href?: string) => {
+    const body = (
+      <>
+        <span className="font-semibold text-fg">{n}</span> {word}
+      </>
+    );
+    return href ? (
+      <Link href={href} className="hover:text-fg-accent">
+        {body}
+      </Link>
+    ) : (
+      <span>{body}</span>
+    );
+  };
   return (
     <div className={className}>
-      <div className="h-2 overflow-hidden rounded-full bg-neutral-muted" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
-        <div className="h-full rounded-full bg-success-emphasis" style={{ width: `${percent}%` }} />
+      <div className="h-[5px] overflow-hidden rounded-[3px] bg-[var(--borderColor-default)]" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+        <div className="h-full bg-success-emphasis" style={{ width: `${percent}%` }} />
       </div>
-      <p className="mt-2 text-xs text-fg-muted">
-        <span className="font-semibold text-fg">{percent}%</span> complete <span className="ml-2 font-semibold text-fg">{open}</span> open{" "}
-        <span className="ml-2 font-semibold text-fg">{closed}</span> closed
+      <p className="mt-2 flex gap-4 text-sm text-fg-muted">
+        <span>
+          <span className="font-semibold text-fg">{percent}%</span> complete
+        </span>
+        {count(open, "open", openHref)}
+        {count(closed, "closed", closedHref)}
       </p>
     </div>
   );
@@ -67,34 +85,37 @@ export function MilestonesPage({ owner, repo }: { owner: string; repo: string })
     setDeleting(null);
   }
 
-  const tabClass = (on: boolean) => cn("flex cursor-pointer items-center gap-1 text-sm", on ? "font-semibold text-fg" : "text-fg-muted hover:text-fg");
   return (
-    <Container>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button href={`${base}/issues`}>Issues</Button>
-        <Button href={`${base}/labels`}>Labels</Button>
-        {canWrite && (
-          <Button variant="primary" className="ml-auto" href={`${base}/milestones/new`}>
+    <IssuesLayout
+      owner={owner}
+      repo={repo}
+      active="milestones"
+      title="Milestones"
+      actions={
+        canWrite && (
+          <Button variant="primary" href={`${base}/milestones/new`}>
             New milestone
           </Button>
-        )}
-      </div>
+        )
+      }
+    >
       {failure && (
-        <Flash className="mt-4" onDismiss={() => setFailure(null)}>
+        <Flash className="mb-4" onDismiss={() => setFailure(null)}>
           {failure}
         </Flash>
       )}
-      <div className="mt-4 rounded-md border border-line">
-        <div className="flex min-h-12 items-center gap-4 rounded-t-md border-b border-line bg-canvas-muted px-4">
-          <button type="button" className={tabClass(tab === "open")} onClick={() => setTab("open")}>
-            <MilestoneIcon size={16} />
-            {count("open")} Open
-          </button>
-          <button type="button" className={tabClass(tab === "closed")} onClick={() => setTab("closed")}>
-            <CheckIcon size={16} />
-            {count("closed")} Closed
-          </button>
-        </div>
+      <ListBox
+        header={
+          <ListTabs
+            tabs={[
+              { key: "open", label: "Open", count: count("open") },
+              { key: "closed", label: "Closed", count: count("closed") },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
+        }
+      >
         {data && shown.length === 0 && (
           <Blankslate
             icon={<MilestoneIcon size={24} />}
@@ -102,34 +123,43 @@ export function MilestonesPage({ owner, repo }: { owner: string; repo: string })
             description="Use milestones to track progress on groups of issues."
           />
         )}
-        <ul className="divide-y divide-line-muted">
+        <ul>
           {shown.map((m) => {
             const due = dueText(m);
-            const issuesHref = searchHref(`${base}/issues`, setToken("is:issue state:open", "milestone", m.title));
+            const total = m.open_issues + m.closed_issues;
+            const issuesHref = (state: string) => searchHref(`${base}/issues`, setToken(`is:issue state:${state}`, "milestone", m.title));
             return (
-              <li key={m.number} className="flex flex-col gap-4 p-4 md:flex-row">
-                <div className="min-w-0 md:w-1/2">
-                  <h2 className="text-2xl font-normal break-words">
-                    <Link href={issuesHref} className="hover:text-fg-accent">
+              <li key={m.number} className="mx-4 flex flex-col gap-x-1 border-b border-line-muted pb-[10px] last:border-b-0 md:flex-row">
+                <div className="min-w-0 flex-1 px-2 pt-2">
+                  <h3 className="text-base leading-6 font-medium break-words">
+                    <Link href={issuesHref("open")} className="hover:text-fg-accent hover:underline">
                       {m.title}
                     </Link>
-                  </h2>
-                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+                  </h3>
+                  {m.description && <p className="mt-1 text-sm break-words whitespace-pre-wrap text-fg-muted">{m.description}</p>}
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs leading-[18px] text-fg-muted">
                     <span className={cn("flex items-center gap-1", due.late && "text-fg-danger")}>
-                      <CalendarIcon size={16} />
+                      {due.late && <AlertFillIcon size={12} />}
                       {due.text}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <ClockIcon size={16} />
+                    {total > 0 && (
+                      <>
+                        <span aria-hidden>•</span>
+                        <span>
+                          {m.closed_issues}/{total} issues closed
+                        </span>
+                      </>
+                    )}
+                    <span aria-hidden>•</span>
+                    <span>
                       Last updated <RelativeTime iso={m.updated_at} />
                     </span>
                   </p>
-                  {m.description && <p className="mt-2 text-sm break-words whitespace-pre-wrap text-fg-muted">{m.description}</p>}
                 </div>
-                <div className="md:w-1/2">
-                  <Progress open={m.open_issues} closed={m.closed_issues} />
+                <div className="px-2 pt-[18px] md:mr-1 md:w-[320px] md:shrink-0 md:px-0">
+                  <Progress open={m.open_issues} closed={m.closed_issues} openHref={issuesHref("open")} closedHref={issuesHref("closed")} />
                   {canWrite && (
-                    <div className="mt-2 flex gap-4 text-sm">
+                    <div className="mt-1 flex gap-4 text-xs">
                       <Link href={`${base}/milestones/${m.number}/edit`} className="text-fg-accent hover:underline">
                         Edit
                       </Link>
@@ -150,7 +180,7 @@ export function MilestonesPage({ owner, repo }: { owner: string; repo: string })
             );
           })}
         </ul>
-      </div>
+      </ListBox>
       <Dialog
         open={!!deleting}
         onClose={() => setDeleting(null)}
@@ -166,7 +196,7 @@ export function MilestonesPage({ owner, repo }: { owner: string; repo: string })
       >
         Deleting <strong>{deleting?.title}</strong> cannot be undone. Its issues are kept and simply lose the milestone.
       </Dialog>
-    </Container>
+    </IssuesLayout>
   );
 }
 

@@ -1,10 +1,12 @@
 "use client";
 
-import { SearchIcon, SyncIcon, TagIcon } from "@primer/octicons-react";
+import { IssueOpenedIcon, KebabHorizontalIcon, SearchIcon, SyncIcon, TagIcon } from "@primer/octicons-react";
 import { type FormEvent, useState } from "react";
 import { useLabels } from "@/components/issue/pickers";
-import { Container, PageError } from "@/components/pages/repos";
+import { PageError } from "@/components/pages/repos";
 import { Blankslate } from "@/components/shell/blankslate";
+import { IssuesLayout, ListBox, ListTabs } from "@/components/shell/issues-layout";
+import { ActionItem, ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Flash, inputClass, TextInput } from "@/components/ui/form";
@@ -118,30 +120,36 @@ export function LabelsPage({ owner, repo }: { owner: string; repo: string }) {
     }
   }
 
+  const issuesHref = (name: string) => searchHref(`/${owner}/${repo}/issues`, toggleToken("is:issue state:open", "label", name));
   return (
-    <Container>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1 basis-full md:max-w-sm md:basis-0">
-          <SearchIcon size={16} className="absolute top-2 left-2 text-fg-muted" />
-          <input aria-label="Search all labels" placeholder="Search all labels" value={filter} onChange={(e) => setFilter(e.target.value)} className={cn(inputClass, "pl-8")} />
-        </div>
-        <Button href={`/${owner}/${repo}/issues`}>Issues</Button>
-        <Button href={`/${owner}/${repo}/milestones`}>Milestones</Button>
-        {canWrite && (
-          <Button variant="primary" className="ml-auto" onClick={() => setCreating(true)}>
+    <IssuesLayout
+      owner={owner}
+      repo={repo}
+      active="labels"
+      title="Labels"
+      actions={
+        canWrite && (
+          <Button variant="primary" onClick={() => setCreating(true)}>
             New label
           </Button>
-        )}
+        )
+      }
+    >
+      <div className="flex pb-4">
+        <input aria-label="Search all labels" placeholder="Search all labels" value={filter} onChange={(e) => setFilter(e.target.value)} className={cn(inputClass, "min-w-0 flex-1 rounded-r-none px-5")} />
+        <span className="-ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-r-md border border-[var(--control-borderColor-rest)] bg-canvas-muted text-fg-muted">
+          <SearchIcon size={16} />
+        </span>
       </div>
 
       {failure && (
-        <Flash className="mt-4" onDismiss={() => setFailure(null)}>
+        <Flash className="mb-4" onDismiss={() => setFailure(null)}>
           {failure}
         </Flash>
       )}
 
       {creating && (
-        <div className="mt-4 rounded-md border border-line bg-canvas-muted p-4">
+        <div className="mb-4 rounded-md border border-line bg-canvas-muted p-4">
           <LabelForm
             initial={{ name: "", description: "", color: randomColor() }}
             submitLabel="Create label"
@@ -155,50 +163,61 @@ export function LabelsPage({ owner, repo }: { owner: string; repo: string }) {
         </div>
       )}
 
-      <div className="mt-4 rounded-md border border-line">
-        <div className="rounded-t-md border-b border-line bg-canvas-muted px-4 py-3 text-sm font-semibold">
-          {shown.length} label{shown.length === 1 ? "" : "s"}
-        </div>
+      <ListBox header={<ListTabs tabs={[{ key: "all", label: "Labels", count: shown.length }]} value="all" />}>
         {data && shown.length === 0 && <Blankslate icon={<TagIcon size={24} />} title="No matching labels" description={needle ? "Try a different search." : "Labels help you organise issues."} />}
-        <ul className="divide-y divide-line-muted">
+        <ul>
           {shown.map((l) => (
-            <li key={l.name} className="px-4 py-3">
+            <li key={l.name} className="border-b border-line-muted last:border-b-0">
               {editing === l.name ? (
-                <LabelForm
-                  initial={l}
-                  submitLabel="Save changes"
-                  onCancel={() => setEditing(null)}
-                  onSubmit={async (next) => {
-                    await api(`${path}/${encodeURIComponent(l.name)}`, { method: "PATCH", body: { new_name: next.name, color: next.color, description: next.description } });
-                    await mutate();
-                    setEditing(null);
-                  }}
-                />
+                <div className="p-4">
+                  <LabelForm
+                    initial={l}
+                    submitLabel="Save changes"
+                    onCancel={() => setEditing(null)}
+                    onSubmit={async (next) => {
+                      await api(`${path}/${encodeURIComponent(l.name)}`, { method: "PATCH", body: { new_name: next.name, color: next.color, description: next.description } });
+                      await mutate();
+                      setEditing(null);
+                    }}
+                  />
+                </div>
               ) : (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                  <div className="w-full md:w-1/4">
-                    <IssueLabel label={l} href={searchHref(`/${owner}/${repo}/issues`, toggleToken("is:issue state:open", "label", l.name))} />
+                <div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 pr-2 pl-4 text-xs text-fg-muted leading-[18px] md:grid-cols-[minmax(0,330fr)_minmax(0,439fr)_98px_auto]">
+                  <div className="flex min-w-0">
+                    <IssueLabel label={l} href={issuesHref(l.name)} />
                   </div>
-                  <p className="min-w-0 flex-1 text-xs text-fg-muted">{l.description}</p>
-                  <Link href={searchHref(`/${owner}/${repo}/issues`, toggleToken("is:issue state:open", "label", l.name))} className="w-28 text-xs text-fg-muted hover:text-fg-accent">
-                    {l.open_issues > 0 ? `${l.open_issues} open issue${l.open_issues === 1 ? "" : "s"}` : ""}
-                  </Link>
-                  {canWrite && (
-                    <div className="flex gap-3 text-xs">
-                      <button type="button" onClick={() => setEditing(l.name)} className="cursor-pointer text-fg-muted hover:text-fg-accent">
-                        Edit
-                      </button>
-                      <button type="button" onClick={() => setDeleting(l)} className="cursor-pointer text-fg-muted hover:text-fg-danger">
-                        Delete
-                      </button>
-                    </div>
-                  )}
+                  <p className="order-3 col-span-2 min-w-0 break-words md:order-none md:col-span-1">{l.description}</p>
+                  <div className="order-4 flex md:order-none md:justify-end">
+                    {l.open_issues > 0 && (
+                      <Link href={issuesHref(l.name)} aria-label={`${l.open_issues} open issue${l.open_issues === 1 ? "" : "s"}`} className="flex items-center gap-1 hover:text-fg-accent">
+                        <IssueOpenedIcon size={16} />
+                        {l.open_issues}
+                      </Link>
+                    )}
+                  </div>
+                  <div className="order-2 flex w-8 justify-end md:order-none">
+                    {canWrite && (
+                      <ActionMenu
+                        width={160}
+                        trigger={
+                          <button type="button" aria-label={`Actions for label ${l.name}`} className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-fg-muted hover:bg-control-transparent-hover">
+                            <KebabHorizontalIcon size={16} />
+                          </button>
+                        }
+                      >
+                        <ActionItem onSelect={() => setEditing(l.name)}>Edit</ActionItem>
+                        <ActionItem danger onSelect={() => setDeleting(l)}>
+                          Delete
+                        </ActionItem>
+                      </ActionMenu>
+                    )}
+                  </div>
                 </div>
               )}
             </li>
           ))}
         </ul>
-      </div>
+      </ListBox>
 
       <Dialog
         open={!!deleting}
@@ -215,6 +234,6 @@ export function LabelsPage({ owner, repo }: { owner: string; repo: string }) {
       >
         Are you sure? Deleting <strong>{deleting?.name}</strong> removes it from every issue. This cannot be undone.
       </Dialog>
-    </Container>
+    </IssuesLayout>
   );
 }

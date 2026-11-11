@@ -23,7 +23,7 @@ export function OptionDot({ color }: { color: string }) {
 
 export function OptionPill({ option }: { option: FieldOption }) {
   const [, bg, fg] = TONES[option.color] ?? TONES.gray;
-  return <span className={cn("inline-block h-5 max-w-full truncate rounded-full px-2 text-xs leading-5 font-medium", bg, fg)}>{option.name}</span>;
+  return <span className={cn("inline-block h-5 max-w-full truncate rounded-full px-[7px] text-xs leading-5 font-semibold", bg, fg)}>{option.name}</span>;
 }
 
 export function optionItems(options: FieldOption[]): PanelItem[] {

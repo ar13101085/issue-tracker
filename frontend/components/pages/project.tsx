@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { type DragEvent, type FormEvent, useState } from "react";
 import useSWR from "swr";
 import { AvatarStack, TypeBadge } from "@/components/issue/pickers";
-import { Container, PageError } from "@/components/pages/repos";
+import { PageError } from "@/components/pages/repos";
 import { CellButton, OptionDot, optionItems, OptionPill } from "@/components/project/parts";
 import { ActionDivider, ActionItem, ActionMenu } from "@/components/ui/action-menu";
 import { Button, buttonClass } from "@/components/ui/button";
@@ -73,7 +73,7 @@ export function ProjectPage({ owner, repo, number }: { owner: string; repo: stri
     <Link
       href={key === "table" ? base : `${base}?view=board`}
       aria-current={view === key ? "page" : undefined}
-      className={cn("-mb-px flex h-10 items-center gap-2 rounded-t-md border border-b-0 px-3 text-sm", view === key ? "border-line bg-canvas font-semibold" : "border-transparent text-fg-muted hover:text-fg")}
+      className={cn("-mb-px flex h-[37px] items-center gap-2 rounded-t-md border border-b-0 px-4 text-sm leading-5 whitespace-nowrap", view === key ? "border-line bg-canvas text-fg" : "border-transparent text-fg-muted hover:text-fg")}
     >
       {icon}
       {label}
@@ -81,18 +81,16 @@ export function ProjectPage({ owner, repo, number }: { owner: string; repo: stri
   );
 
   return (
-    <div className="px-4 py-4 md:px-6 lg:px-8">
-      <div className="flex flex-wrap items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-fg-muted">
-            <Link href={`/${full}/projects`} className="hover:text-fg-accent hover:underline">
-              Projects
-            </Link>{" "}
-            / #{project.number}
-            {project.closed && <span className="ml-2 rounded-full bg-done-emphasis px-2 py-0.5 text-fg-on-emphasis">Closed</span>}
-          </p>
-          <h1 className="text-xl font-semibold break-words">{project.title}</h1>
-          {project.description && <p className="text-sm text-fg-muted">{project.description}</p>}
+    <div className="flex min-h-[calc(100vh-110px)] flex-col">
+      <div className="flex min-h-12 flex-wrap items-center gap-2 bg-canvas-muted px-4 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <Link href={`/${full}/projects`} aria-label="All projects" title="All projects" className="flex h-5 w-4 shrink-0 items-center justify-center text-fg-muted hover:text-fg-accent">
+            <TableIcon size={16} />
+          </Link>
+          <h1 className="min-w-0 truncate text-xl leading-[30px] font-semibold" title={project.description || undefined}>
+            {project.title}
+          </h1>
+          {project.closed && <span className="ml-2 rounded-full bg-done-emphasis px-2 py-0.5 text-xs font-medium text-fg-on-emphasis">Closed</span>}
         </div>
         {project.viewer_can_edit && <AddItem repo={full} project={project} onAdd={(n) => send("/items", "POST", { issue_number: n })} />}
         {project.viewer_can_admin && (
@@ -116,18 +114,18 @@ export function ProjectPage({ owner, repo, number }: { owner: string; repo: stri
       </div>
 
       {failure && (
-        <Flash className="mt-3" onDismiss={() => setFailure(null)}>
+        <Flash className="mx-4 my-2" onDismiss={() => setFailure(null)}>
           {failure}
         </Flash>
       )}
 
-      <div className="mt-4 flex border-b border-line">
+      <div className="flex overflow-x-auto border-b border-line bg-canvas-muted px-4">
         {viewTab("table", "Table", <TableIcon size={16} />)}
         {viewTab("board", "Board", <ProjectIcon size={16} />)}
       </div>
 
       {project.items.length === 0 ? (
-        <div className="rounded-b-md border border-t-0 border-line py-12 text-center">
+        <div className="py-12 text-center">
           <p className="text-base font-semibold">This project has no items yet</p>
           <p className="text-sm text-fg-muted">{project.viewer_can_edit ? "Use “Add item” to bring in issues from this repository." : "Items added by the team will show up here."}</p>
         </div>
@@ -291,7 +289,7 @@ function TableView({
   onFieldMenu: (d: Dialogs) => void;
   onDeleteField: (f: ProjectField) => void;
 }) {
-  const th = "h-9 border-b border-r border-line bg-canvas-muted px-3 text-left text-xs font-semibold whitespace-nowrap text-fg-muted";
+  const th = "h-[34px] border-b-2 border-r border-line bg-canvas px-3 text-left text-xs font-semibold whitespace-nowrap text-fg-muted";
   const td = "border-b border-r border-line-muted p-0 align-middle";
   const select = (item: ProjectItem, field: ProjectField) => {
     const current = field.options.find((o) => o.id === item.values[field.id]);
@@ -309,11 +307,11 @@ function TableView({
     );
   };
   return (
-    <div className="overflow-x-auto rounded-b-md border border-t-0 border-line">
+    <div className="overflow-x-auto border-b border-line-muted">
       <table className="w-full min-w-max border-collapse text-sm">
         <thead>
           <tr>
-            <th className={cn(th, "w-10 text-center")}>#</th>
+            <th className={cn(th, "w-[60px]")} aria-label="Row" />
             <th className={cn(th, "min-w-[280px]")}>Title</th>
             <th className={th}>Assignees</th>
             <th className={th}>Status</th>
@@ -343,7 +341,7 @@ function TableView({
             ))}
             <th className={cn(th, "w-10 border-r-0 p-0")}>
               {project.viewer_can_admin && (
-                <button type="button" aria-label="New field" title="New field" onClick={() => onFieldMenu({ kind: "field" })} className="flex h-9 w-10 cursor-pointer items-center justify-center hover:bg-control-transparent-hover">
+                <button type="button" aria-label="New field" title="New field" onClick={() => onFieldMenu({ kind: "field" })} className="flex h-8 w-10 cursor-pointer items-center justify-center hover:bg-control-transparent-hover">
                   <PlusIcon size={16} />
                 </button>
               )}
@@ -352,15 +350,15 @@ function TableView({
         </thead>
         <tbody>
           {project.items.map((item, index) => (
-            <tr key={item.id} className="group hover:bg-canvas-muted">
-              <td className={cn(td, "text-center text-xs text-fg-muted")}>{index + 1}</td>
+            <tr key={item.id} className="group h-[37px] hover:bg-canvas-muted">
+              <td className={cn(td, "pr-1 pl-7 text-fg-muted")}>{index + 1}</td>
               <td className={td}>
-                <span className="flex min-h-9 items-center gap-2 px-3">
+                <span className="flex min-h-9 items-center gap-1 pr-3 pl-[35px]">
                   <IssueStateIcon issue={item.issue} />
-                  <Link href={`/${repo}/issues/${item.issue.number}`} className="min-w-0 max-w-[420px] truncate font-semibold hover:text-fg-accent hover:underline">
+                  <Link href={`/${repo}/issues/${item.issue.number}`} className="min-w-0 max-w-[420px] truncate hover:text-fg-accent hover:underline">
                     {item.issue.title}
                   </Link>
-                  <span className="text-fg-muted">#{item.issue.number}</span>
+                  <span className="ml-1 text-fg-muted">#{item.issue.number}</span>
                   {item.issue.issue_type && <TypeBadge type={item.issue.issue_type} />}
                 </span>
               </td>
@@ -444,7 +442,7 @@ function BoardView({
   }
 
   return (
-    <div className="flex gap-3 overflow-x-auto rounded-b-md border border-t-0 border-line bg-canvas-inset p-3">
+    <div className="flex min-h-0 flex-1 overflow-x-auto px-4 pt-2 pb-4">
       {columns.map((col) => {
         const cards = inColumn(col.id);
         if (col.id === "" && cards.length === 0 && !dragging) return null;
@@ -454,14 +452,14 @@ function BoardView({
             aria-label={col.name}
             onDragOver={(e) => over(e, col.id, cards)}
             onDrop={(e) => drop(e, col.id)}
-            className={cn("flex max-h-[calc(100vh-220px)] min-h-[160px] w-[320px] max-w-[85vw] shrink-0 flex-col rounded-md border bg-canvas-muted", target?.column === col.id ? "border-[var(--borderColor-accent-emphasis)]" : "border-line")}
+            className={cn("mr-2 flex max-h-[calc(100vh-190px)] min-h-[160px] w-[350px] max-w-[85vw] shrink-0 flex-col rounded-md border bg-canvas-muted", target?.column === col.id ? "border-[var(--borderColor-accent-emphasis)]" : "border-line")}
           >
-            <header className="flex items-center gap-2 px-3 py-2 text-sm">
+            <header className="flex min-h-11 items-center gap-2 pt-2 pr-2 pb-1 pl-4 text-sm">
               <OptionDot color={col.color} />
               <h2 className="truncate font-semibold">{col.name}</h2>
-              <span className="rounded-full bg-neutral-muted px-1.5 text-xs">{cards.length}</span>
+              <span className="inline-flex h-[18px] items-center rounded-full bg-neutral-muted px-[7px] text-xs font-semibold text-fg-muted">{cards.length}</span>
             </header>
-            <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+            <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pt-2 pb-1">
               {cards.map((item) => (
                 <li key={item.id} data-card={item.id}>
                   {target?.column === col.id && target.before === item.id && <div className="mb-2 h-0.5 rounded bg-accent-emphasis" />}
@@ -476,13 +474,11 @@ function BoardView({
                       setDragging(null);
                       setTarget(null);
                     }}
-                    className={cn("rounded-md border border-line bg-canvas p-2 shadow-[var(--shadow-resting-small)]", project.viewer_can_edit && "cursor-grab active:cursor-grabbing", dragging === item.id && "opacity-40")}
+                    className={cn("rounded-md border border-line bg-canvas px-3 pt-2 pb-3 shadow-[var(--shadow-resting-small)]", project.viewer_can_edit && "cursor-grab active:cursor-grabbing", dragging === item.id && "opacity-40")}
                   >
-                    <div className="flex items-start gap-2">
-                      <span className="flex h-5 items-center">
-                        <IssueStateIcon issue={item.issue} />
-                      </span>
-                      <span className="min-w-0 flex-1 text-xs text-fg-muted">
+                    <div className="mb-1 flex min-h-6 items-center gap-1">
+                      <IssueStateIcon issue={item.issue} />
+                      <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
                         {repo.split("/")[1]} #{item.issue.number}
                       </span>
                       {project.viewer_can_edit && (
@@ -507,7 +503,7 @@ function BoardView({
                         </ActionMenu>
                       )}
                     </div>
-                    <Link href={`/${repo}/issues/${item.issue.number}`} draggable={false} className="mt-1 block text-sm font-semibold break-words hover:text-fg-accent hover:underline">
+                    <Link href={`/${repo}/issues/${item.issue.number}`} draggable={false} className="block text-sm leading-[1.3] break-words hover:text-fg-accent hover:underline">
                       {item.issue.title}
                     </Link>
                     {(item.issue.labels.length > 0 || item.issue.assignees.length > 0 || item.issue.issue_type) && (

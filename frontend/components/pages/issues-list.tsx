@@ -7,11 +7,8 @@ import {
   IssueOpenedIcon,
   IssueTracksIcon,
   MilestoneIcon,
-  PersonIcon,
   PinIcon,
   SearchIcon,
-  SmileyIcon,
-  TableIcon,
   TagIcon,
   TriangleDownIcon,
   XCircleFillIcon,
@@ -21,6 +18,7 @@ import { type ButtonHTMLAttributes, type FormEvent, type ReactNode, useEffect, u
 import useSWR from "swr";
 import { AvatarStack, labelItems, milestoneItems, TypeBadge, typeItems, useAssignees, useLabels, useMilestones, userItems } from "@/components/issue/pickers";
 import { PageError } from "@/components/pages/repos";
+import { assignedQuery, createdQuery, IssuesNav } from "@/components/shell/issues-layout";
 import { Blankslate } from "@/components/shell/blankslate";
 import { ActionChoice, ActionHeading, ActionItem, ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
@@ -31,7 +29,7 @@ import { SelectPanel } from "@/components/ui/select-panel";
 import { api, type ApiError, asApiError, hasRole, type Issue, type IssueList } from "@/lib/api";
 import { DEFAULT_QUERY, parseQuery, searchHref, setToken, SORTS, toggleNo, toggleToken } from "@/lib/query";
 import { Link, navigate } from "@/lib/router";
-import { useRepo, useSession } from "@/lib/session";
+import { useRepo } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 const filterButton = "flex h-8 cursor-pointer items-center gap-2 rounded-md px-3 text-sm whitespace-nowrap text-fg hover:bg-control-transparent-hover";
@@ -55,7 +53,6 @@ export function IssuesListPage({ owner, repo }: { owner: string; repo: string })
   const page = Math.max(1, Number(search.get("page")) || 1);
   const parsed = parseQuery(q);
   const { data: repoData } = useRepo(owner, repo);
-  const { user } = useSession();
   const canTriage = hasRole(repoData, "triage");
 
   const listKey = `/repos/${full}/issues?q=${encodeURIComponent(q)}&page=${page}`;
@@ -95,33 +92,9 @@ export function IssuesListPage({ owner, repo }: { owner: string; repo: string })
   const allPicked = items.length > 0 && items.every((i) => picked.includes(i.number));
   const none = { key: "__none__", text: "none" };
 
-  const side = (href: string, active: boolean, icon: ReactNode, label: string) => (
-    <li>
-      <Link href={href} aria-current={active ? "page" : undefined} className={cn("flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-control-transparent-hover", active && "bg-[var(--control-transparent-bgColor-selected)] font-semibold")}>
-        <span className="text-fg-muted">{icon}</span>
-        {label}
-      </Link>
-    </li>
-  );
-  const mineQ = setToken(DEFAULT_QUERY, "assignee", "@me");
-  const createdQ = setToken(DEFAULT_QUERY, "author", "@me");
-
   return (
     <div className="lg:flex">
-      <aside className="hidden w-[256px] shrink-0 border-r border-line p-2 lg:block">
-        <nav aria-label="Issues">
-          <ul className="px-2 py-2">
-            {side(base, q !== mineQ && q !== createdQ, <IssueOpenedIcon size={16} />, "Issues")}
-            {user && side(searchHref(base, mineQ), q === mineQ, <PersonIcon size={16} />, "Assigned to me")}
-            {user && side(searchHref(base, createdQ), q === createdQ, <SmileyIcon size={16} />, "Created by me")}
-          </ul>
-          <ul className="mx-2 border-t border-line-muted py-2">
-            {side(`/${owner}/${repo}/projects`, false, <TableIcon size={16} />, "Projects")}
-            {side(`/${owner}/${repo}/milestones`, false, <MilestoneIcon size={16} />, "Milestones")}
-            {side(`/${owner}/${repo}/labels`, false, <TagIcon size={16} />, "Labels")}
-          </ul>
-        </nav>
-      </aside>
+      <IssuesNav owner={owner} repo={repo} active={q === assignedQuery ? "assigned" : q === createdQuery ? "created" : "issues"} />
       <main className="mx-auto w-full max-w-[1280px] min-w-0 flex-1 p-4 md:p-6">
       {pinned.data && pinned.data.length > 0 && (
         <div className="mb-4 grid gap-3 md:grid-cols-3">
